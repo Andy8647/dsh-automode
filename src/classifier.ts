@@ -203,7 +203,7 @@ export async function classifyL1(
     return { status: 'fail-closed', stage: 'L1-deep', error: `no VERDICT line in model output (${stage2.length} chars)` }
   }
   VERDICT_PATTERN.lastIndex = 0
-  const rationale = truncate(stage2.replace(VERDICT_PATTERN, '').trim(), 300)
+  const rationale = truncate(stage2.replace(VERDICT_PATTERN, '').trim(), 1000)
   VERDICT_PATTERN.lastIndex = 0
   return {
     status: verdict,

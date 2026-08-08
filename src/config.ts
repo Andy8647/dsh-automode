@@ -74,7 +74,7 @@ export const Config: z<Config> = z.object({
   classifierFastModel: z.string(),
   classifierDeepProvider: z.string(),
   classifierDeepModel: z.string(),
-  classifierTimeoutMs: z.number().default(10_000),
+  classifierTimeoutMs: z.number().default(20_000),
   classifierGuidance: z.string(),
 })
 

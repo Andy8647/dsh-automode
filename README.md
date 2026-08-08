@@ -115,10 +115,10 @@ auto-approval:
 | `askPatterns` | 见 `src/config.ts` | 正则，命中 command/code 即 `ask` 转人工 |
 | `autoApproveTools` | 只读工具列表 | tool name 白名单，直接放行 |
 | `bashCommandPrefixes` | 空 | bash 命令前缀白名单：以这些前缀开头且不含 shell 元字符（`\|` `>` `<` `;` `&` 反引号 `$(`）的 bash 命令跳过 L1 直接放行。tool 名白名单豁免不了 bash 子命令（`ls`/`cat` 都走 `bash` tool），这是只读 shell 命令的唯一免 L1 通道 |
-| `consecutiveDenyLimit` | `3` | 同一 turn 连续被 deny N 次后暂停自动放行，强制用户介入（防失控） |
+| `consecutiveDenyLimit` | `3` | 同一 turn 内累计被 deny N 次后暂停自动放行，强制用户介入（防失控；按 turn 计数，下条用户消息清零——注意是"回合内累计"不是"连续"） |
 | `classifierFastProvider` / `classifierFastModel` | 未设置 | L1 Stage 1 fast 过滤的模型路由（须成对）；设置后启用 L1 |
 | `classifierDeepProvider` / `classifierDeepModel` | 未设置 | L1 Stage 2 深查的模型路由（须成对），缺省沿用 fast |
-| `classifierTimeoutMs` | `10000` | L1 单次模型调用超时，超时 fail-closed 转 ask |
+| `classifierTimeoutMs` | `20000` | L1 单次模型调用超时，超时 fail-closed 转 ask |
 | `classifierGuidance` | 未设置 | 用户自定义判定准则，作为 guidance 注入 L1 prompt（非硬规则） |
 
 ## 审计
