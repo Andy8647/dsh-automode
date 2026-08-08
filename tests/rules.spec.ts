@@ -6,6 +6,7 @@ import {
   DENY_REASON,
   extractMatchableText,
   hasEscalationArgs,
+  matchBashPrefix,
   matchFirst,
 } from '../src/rules.ts'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
@@ -63,6 +64,39 @@ describe('hasEscalationArgs（M5）', () => {
     expect(hasEscalationArgs({ sandbox_permissions: 'workspace-write' })).toBe(false)
     expect(hasEscalationArgs({ justification: 'need it' })).toBe(false)
     expect(hasEscalationArgs({ command: 'ls' })).toBe(false)
+  })
+})
+
+describe('matchBashPrefix（bash 命令前缀白名单）', () => {
+  const ls = ['ls']
+
+  it('精确命令与前缀 + 参数都命中', () => {
+    expect(matchBashPrefix('ls', ls)).toBe(true)
+    expect(matchBashPrefix('ls -la /tmp', ls)).toBe(true)
+    expect(matchBashPrefix('  ls -la  ', ls)).toBe(true)
+  })
+
+  it('词边界：less 不命中 ls；git push 不命中 git status', () => {
+    expect(matchBashPrefix('less big.log', ls)).toBe(false)
+    expect(matchBashPrefix('git push', ['git status'])).toBe(false)
+    expect(matchBashPrefix('git status --short', ['git status'])).toBe(true)
+  })
+
+  it('shell 元字符一律拒绝（管道/重定向/拼接/命令替换）', () => {
+    expect(matchBashPrefix('ls | rm -rf /', ls)).toBe(false)
+    expect(matchBashPrefix('ls > /tmp/out', ls)).toBe(false)
+    expect(matchBashPrefix('ls; rm -rf /', ls)).toBe(false)
+    expect(matchBashPrefix('ls &', ls)).toBe(false)
+    expect(matchBashPrefix('ls $(echo x)', ls)).toBe(false)
+    expect(matchBashPrefix('echo `whoami`', ['echo'])).toBe(false)
+    expect(matchBashPrefix('ls\nrm -rf /', ls)).toBe(false)
+  })
+
+  it('无前缀列表或空命令不命中', () => {
+    expect(matchBashPrefix('ls', [])).toBe(false)
+    expect(matchBashPrefix(undefined, ls)).toBe(false)
+    expect(matchBashPrefix('', ls)).toBe(false)
+    expect(matchBashPrefix('ls', ['  '])).toBe(false)
   })
 })
 

@@ -25,7 +25,7 @@ import { Config, resolveConfig } from './config.ts'
 import type { ResolvedConfig } from './config.ts'
 import { classifyL1 } from './classifier.ts'
 import type { LlmLike } from './classifier.ts'
-import { ASK_REASON, createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchFirst } from './rules.ts'
+import { ASK_REASON, createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchBashPrefix, matchFirst } from './rules.ts'
 import { audit, auditArmed } from './audit.ts'
 import type { DecisionStage } from './audit.ts'
 import { DenialTracker } from './tracker.ts'
@@ -94,7 +94,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   const arm = (): void => {
     logger.info(
       `auto-approval armed: ${resolved.deny.length} deny / ${resolved.ask.length} ask patterns, ` +
-      `${resolved.autoApproveTools.size} auto-approve tools, consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` +
+      `${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, ` +
+      `consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` +
       (resolved.classifier === undefined
         ? ', L1 disabled'
         : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`),
@@ -184,8 +185,9 @@ export function apply(ctx: Context, config: Config = {}): void {
       }
     }
 
-    // ---- 只读工具白名单 ----
-    if (resolved.autoApproveTools.has(exec.name)) {
+    // ---- 只读工具白名单 / bash 命令前缀白名单 ----
+    if (resolved.autoApproveTools.has(exec.name)
+      || (exec.name === 'bash' && matchBashPrefix(text, resolved.bashCommandPrefixes))) {
       audit(ctx, agent, { tool: exec.name, callId, stage: 'whitelist', decision: 'allow' })
       return next()
     }

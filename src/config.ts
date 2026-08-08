@@ -17,6 +17,13 @@ export interface Config {
   askPatterns?: string[]
   /** 直接放行的 tool name 白名单（如 read、grep、ls 类只读工具）。 */
   autoApproveTools?: string[]
+  /**
+   * bash 命令前缀白名单：`bash` tool 的命令以这些前缀开头且不含 shell 元字符
+   * （`|` `>` `<` `;` `&` 反引号 `$(`）时直接放行，跳过 L1。
+   * 白名单按 tool 名匹配，bash 子命令（ls/cat/pwd 等）无法被 autoApproveTools
+   * 豁免，这是给只读 shell 命令的唯一免 L1 通道。
+   */
+  bashCommandPrefixes?: string[]
   /** 连续被 deny N 次后暂停自动放行，本 turn 内全部转人工（防失控）。 */
   consecutiveDenyLimit?: number
   /** L1 Stage 1（fast 过滤）的 provider；须与 classifierFastModel 成对。 */
@@ -61,6 +68,7 @@ export const Config: z<Config> = z.object({
   autoApproveTools: z.array(z.string()).default([
     'read', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
   ]),
+  bashCommandPrefixes: z.array(z.string()).default([]),
   consecutiveDenyLimit: z.number().step(1).min(1).default(3),
   classifierFastProvider: z.string(),
   classifierFastModel: z.string(),
@@ -101,6 +109,8 @@ export interface ResolvedConfig {
   readonly ask: readonly RegExp[]
   readonly askSources: readonly string[]
   readonly autoApproveTools: ReadonlySet<string>
+  /** bash 命令前缀白名单（前缀匹配 + 无 shell 元字符校验）。 */
+  readonly bashCommandPrefixes: readonly string[]
   readonly consecutiveDenyLimit: number
   /** 未配置 fast 路由时为 undefined（L1 关闭，L0 未命中即 allow）。 */
   readonly classifier?: ResolvedClassifierConfig
@@ -146,6 +156,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     denyPatterns: string[]
     askPatterns: string[]
     autoApproveTools: string[]
+    bashCommandPrefixes: string[]
     consecutiveDenyLimit: number
     classifierTimeoutMs: number
   }
@@ -169,6 +180,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     ask,
     askSources: resolved.askPatterns,
     autoApproveTools: new Set(resolved.autoApproveTools),
+    bashCommandPrefixes: resolved.bashCommandPrefixes,
     consecutiveDenyLimit: resolved.consecutiveDenyLimit,
     ...fast === undefined ? {} : {
       classifier: {
