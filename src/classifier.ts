@@ -13,7 +13,7 @@
  * @module @deepseek-ai/dsh-auto-approval/classifier
  */
 
-import { BlockAssembler, createUserMessage, deepFreeze } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, createUserMessage, deepFreeze, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, Message, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { deadline } from '@deepseek-ai/dsh-timeout'
 import type { ModelRoute, ResolvedClassifierConfig } from './config.ts'
@@ -136,6 +136,9 @@ async function callModel(
       messages,
       system,
       maxTokens,
+      // classifier 只判定，不需要推理链：强制 off，避免 v4-flash 的 reasoning
+      // token 吃满 maxTokens 导致截断（真机实测 fast/deep 均被 max-tokens 截断）。
+      reasoningEffort: ReasoningEffortId('off'),
       ...sessionId === undefined ? {} : { sessionId },
       signal: callDeadline.signal,
     })
@@ -180,10 +183,12 @@ export async function classifyL1(
   }
 
   // Stage 2：CoT 深查，末行 VERDICT 定结论；解析失败 fail-closed。
+  // 接受 max-tokens 截断收尾：只要文本里提取到 VERDICT 行就算成功（截断把
+  // VERDICT 截掉则下面 verdict 提取失败 → fail-closed，仍安全）。
   const deepStart = Date.now()
   let stage2: string
   try {
-    stage2 = await callModel(llm, config.deep, stage2System(config.guidance), framed, 512, config.timeoutMs, input.sessionId, input.signal, 'L1-deep')
+    stage2 = await callModel(llm, config.deep, stage2System(config.guidance), framed, 768, config.timeoutMs, input.sessionId, input.signal, 'L1-deep', true)
   } catch (error: unknown) {
     return { status: 'fail-closed', stage: 'L1-deep', error: error instanceof Error ? error.message : String(error) }
   }

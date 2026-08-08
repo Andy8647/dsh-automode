@@ -44,6 +44,7 @@ describe('classifyL1 两阶段判定', () => {
     expect(llm.calls).toHaveLength(1)
     expect(llm.calls[0]?.model).toBe('fast-m')
     expect(llm.calls[0]?.maxTokens).toBe(16)
+    expect(llm.calls[0]?.reasoningEffort).toBe('off')
   })
 
   it('Stage 1 max-tokens 截断但首字符为 0 → 仍直接 allow（截断不影响首字符判定）', async () => {
@@ -71,7 +72,16 @@ describe('classifyL1 两阶段判定', () => {
     expect(llm.calls).toHaveLength(2)
   })
 
-  it('Stage 2 max-tokens 截断 → fail-closed（deep 必须完整 VERDICT，保持严格）', async () => {
+  it('Stage 2 max-tokens 截断但含 VERDICT 行 → 仍成功判定（verdict 提取兜底）', async () => {
+    const llm = stubLlm('1', () => (async function* (): AsyncGenerator<StreamChunk> {
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text: 'Deletes files.\nVERDICT: DENY' }
+      yield { type: 'finish', reason: { kind: 'max-tokens' } }
+    })())
+    expect(await classifyL1(llm, CONFIG, INPUT)).toMatchObject({ status: 'deny', stage: 'L1-deep' })
+  })
+
+  it('Stage 2 max-tokens 截断且无 VERDICT → fail-closed（安全方向）', async () => {
     const llm = stubLlm('1', () => (async function* (): AsyncGenerator<StreamChunk> {
       yield { type: 'block-start', index: 0, blockType: 'text' }
       yield { type: 'text-delta', index: 0, text: 'It is probably fine.' }
