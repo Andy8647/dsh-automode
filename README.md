@@ -114,6 +114,7 @@ auto-approval:
 | `denyPatterns` | 见 `src/config.ts` | 正则，命中 command/code 即 `deny`（硬规则，优先级最高） |
 | `askPatterns` | 见 `src/config.ts` | 正则，命中 command/code 即 `ask` 转人工 |
 | `autoApproveTools` | 只读工具列表 | tool name 白名单，直接放行 |
+| `bashCommandPrefixes` | 空 | bash 命令前缀白名单：以这些前缀开头且不含 shell 元字符（`\|` `>` `<` `;` `&` 反引号 `$(`）的 bash 命令跳过 L1 直接放行。tool 名白名单豁免不了 bash 子命令（`ls`/`cat` 都走 `bash` tool），这是只读 shell 命令的唯一免 L1 通道 |
 | `consecutiveDenyLimit` | `3` | 同一 turn 连续被 deny N 次后暂停自动放行，强制用户介入（防失控） |
 | `classifierFastProvider` / `classifierFastModel` | 未设置 | L1 Stage 1 fast 过滤的模型路由（须成对）；设置后启用 L1 |
 | `classifierDeepProvider` / `classifierDeepModel` | 未设置 | L1 Stage 2 深查的模型路由（须成对），缺省沿用 fast |
@@ -138,18 +139,32 @@ tail -f ~/.dsh/logs/auto-approval.log
 
 ## 真机验证（2026-08-08，Web 会话，approval policy=ask + workspace-write 沙箱）
 
+### L0 三用例（首次验证）
+
 | 用例 | 审计记录 | 结果 |
 |---|---|---|
 | `echo danger_test`（测试 deny 规则） | `L0-deny · deny · pattern: echo\s+danger_test` | ✅ 模型收到 deny 错误，拒绝执行 |
 | `sudo echo hi` | `L0-ask · ask · pattern: sudo\s` → 用户批准 → 沙箱拦 exec → escalation 重试 → `escalation-bypass · allow` | ✅ 审批链路走通；sudo 无 TTY 失败（exit 1） |
 | `ls` 等常规命令 | `default-allow · allow` | ✅ 未命中规则直接放行 |
 
+### L1 六用例（2026-08-09，classifier 路由 deepseek-official/deepseek-v4-flash）
+
+| # | 命令 | 实际判定 | 结果 |
+|---|---|---|---|
+| 1 | `echo hello` | `L1-fast · allow`（1069ms） | ✅ |
+| 2 | `date ...` | `L1-fast · allow`（1944ms） | ✅ |
+| 3 | `mkdir && printf > hello.txt` | `L1-deep · allow`（4257ms，rationale: "local, reversible, matches intent"） | ✅ |
+| 4 | `rm -rf /tmp/dsh-l1-test` | deep 超时 → fail-closed ask（人工兜底，安全方向） | ✅ |
+| 5 | `echo danger_test` | `L0-deny`（未进 L1） | ✅ |
+| 6 | `ls -la` | 走 L1-fast（当时无 bash 前缀白名单；已加 `bashCommandPrefixes` 解决） | ⚠️→已修 |
+
 要点：
 
 - **两层防线分工**：插件管「调用危险不危险」（pre-execute），沙箱管「文件效应越界」（exec 权限）。system 级命令即使过了插件与审批，workspace-write 沙箱仍拦 exec，需升级 danger-full-access。
 - **escalation-bypass（M5）**：带 sandbox 升级参数的调用不再重复走 ask/L1——人已在 escalation 审批中批准，避免双重弹窗。
 - **规则漏网案例**：`rm -rf ./*` 曾被默认规则 `rm\s+.../\s*$` 放过（只匹配以 `/` 结尾）。已补 `rm\s+(-[a-z]*[fr][a-z]*\s+)*(\./)?\*\s*$` 与 `rm\s+(-[a-z]*[fr][a-z]*\s+)*\.\/?\s*$`（覆盖 `rm -rf ./*` / `rm -rf *` / `rm -rf .` / `rm -rf ./`，不误伤 `rm -rf foo/`）。**pattern 匹配 command 全文**，`echo rm -rf ./*` 这类打印也会命中（保守方向，fail-closed）。
-- **L1 classifier 尚未真机验证**：L0 规则引擎是确定性正则，本次覆盖；L1（LLM 两阶段意图判定）需配好 classifierFastProvider/Model 后单独验证。
+- **真机踩坑（两次修复）**：① fast `maxTokens=8` 对 v4-flash 不够——模型输出解释文本被截断，finish=max-tokens → extractText 抛错 → 全 fail-closed。修复：fast 接受截断收尾（只看首字符）+ maxTokens 提到 16。② classifier 调用继承了 api-gateway 的 `reasoningEffort: max`——v4-flash 的 reasoning token 吃满 maxTokens（fast 16 / deep 512 都被截断）。修复：classifier 强制 `reasoningEffort: off`（判定调用不需要推理链）+ deep 接受截断收尾（VERDICT 行存活即成功）+ deep maxTokens 768。
+- **deny 后模型长时间思考**：旧 deny 文案「choose a safer alternative or ask」是开放决策——v4-flash 面对「为什么被拒（pattern 隐藏）+ 替代方案可能不存在」会陷入长时间 reasoning。已改为「report the denial and ask the user」，把模型行为收窄成确定动作。
 
 ## 已知限制
 
