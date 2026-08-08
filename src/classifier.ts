@@ -92,9 +92,12 @@ function stage2System(guidance: string | undefined): string {
 }
 
 /** 从 assembler 提取纯文本；非 stop 收尾或混入 tool-call 块都视为失败。 */
-function extractText(assembler: BlockAssembler, stage: string): string {
+function extractText(assembler: BlockAssembler, stage: string, acceptTruncated = false): string {
   const finish = assembler.finish
-  if (finish === undefined || finish.kind !== 'stop') {
+  // fast 阶段只需要首字符（0=allow）：max-tokens 截断不影响判定，接受截断
+  // 收尾；deep 阶段必须完整 VERDICT 行，保持严格（截断即失败）。
+  const truncated = finish?.kind === 'max-tokens'
+  if (finish === undefined || (finish.kind !== 'stop' && !(acceptTruncated && truncated))) {
     throw new Error(`auto-approval: ${stage} model call ended abnormally (${finish === undefined ? 'no finish' : finish.kind})`)
   }
   const blocks = assembler.blocks()
@@ -119,6 +122,7 @@ async function callModel(
   sessionId: GenerateOptions['sessionId'],
   upstream: AbortSignal | undefined,
   stage: string,
+  acceptTruncated = false,
 ): Promise<string> {
   const messages: Message[] = [createUserMessage({
     content: [{ type: 'text', text: userText }],
@@ -141,7 +145,7 @@ async function callModel(
       assembler.push(chunk)
     }
     callDeadline.signal.throwIfAborted()
-    return extractText(assembler, stage)
+    return extractText(assembler, stage, acceptTruncated)
   } finally {
     callDeadline[Symbol.dispose]()
   }
@@ -165,7 +169,9 @@ export async function classifyL1(
   const fastStart = Date.now()
   let stage1: string
   try {
-    stage1 = await callModel(llm, config.fast, STAGE1_SYSTEM, framed, 8, config.timeoutMs, input.sessionId, input.signal, 'L1-fast')
+    // fast 只关心首字符（0=allow）：max-tokens 截断照样能判，接受截断收尾。
+    // maxTokens=16：8 在推理模型上被 reasoning/多余文本耗尽即截断（真机实测）。
+    stage1 = await callModel(llm, config.fast, STAGE1_SYSTEM, framed, 16, config.timeoutMs, input.sessionId, input.signal, 'L1-fast', true)
   } catch (error: unknown) {
     return { status: 'fail-closed', stage: 'L1-fast', error: error instanceof Error ? error.message : String(error) }
   }

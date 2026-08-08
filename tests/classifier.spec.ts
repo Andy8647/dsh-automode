@@ -12,11 +12,11 @@ const CONFIG: ResolvedClassifierConfig = {
 
 const INPUT = { intent: 'fix the failing test', toolName: 'bash', args: { command: 'pnpm test' } }
 
-function textChunks(text: string): StreamChunk[] {
+function textChunks(text: string, finishKind: 'stop' | 'max-tokens' = 'stop'): StreamChunk[] {
   return [
     { type: 'block-start', index: 0, blockType: 'text' },
     { type: 'text-delta', index: 0, text },
-    { type: 'finish', reason: { kind: 'stop' } },
+    { type: 'finish', reason: { kind: finishKind } },
   ]
 }
 
@@ -43,7 +43,41 @@ describe('classifyL1 两阶段判定', () => {
     expect(outcome).toMatchObject({ status: 'allow', stage: 'L1-fast', route: CONFIG.fast })
     expect(llm.calls).toHaveLength(1)
     expect(llm.calls[0]?.model).toBe('fast-m')
-    expect(llm.calls[0]?.maxTokens).toBe(8)
+    expect(llm.calls[0]?.maxTokens).toBe(16)
+  })
+
+  it('Stage 1 max-tokens 截断但首字符为 0 → 仍直接 allow（截断不影响首字符判定）', async () => {
+    const llm = stubLlm(() => (async function* (): AsyncGenerator<StreamChunk> {
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text: '0' }
+      yield { type: 'finish', reason: { kind: 'max-tokens' } }
+    })())
+    const outcome = await classifyL1(llm, CONFIG, INPUT)
+    expect(outcome).toMatchObject({ status: 'allow', stage: 'L1-fast' })
+    expect(llm.calls).toHaveLength(1)
+  })
+
+  it('Stage 1 max-tokens 截断且首字符非 0 → 进 Stage 2，deep 正常判定（保守方向）', async () => {
+    const llm = stubLlm(
+      () => (async function* (): AsyncGenerator<StreamChunk> {
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text: '1' }
+        yield { type: 'finish', reason: { kind: 'max-tokens' } }
+      })(),
+      'Deletes files outside the request.\nVERDICT: DENY',
+    )
+    const outcome = await classifyL1(llm, CONFIG, INPUT)
+    expect(outcome).toMatchObject({ status: 'deny', stage: 'L1-deep' })
+    expect(llm.calls).toHaveLength(2)
+  })
+
+  it('Stage 2 max-tokens 截断 → fail-closed（deep 必须完整 VERDICT，保持严格）', async () => {
+    const llm = stubLlm('1', () => (async function* (): AsyncGenerator<StreamChunk> {
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text: 'It is probably fine.' }
+      yield { type: 'finish', reason: { kind: 'max-tokens' } }
+    })())
+    expect(await classifyL1(llm, CONFIG, INPUT)).toMatchObject({ status: 'fail-closed', stage: 'L1-deep' })
   })
 
   it('Stage 1 flagged → Stage 2 CoT 深查，VERDICT: DENY', async () => {
