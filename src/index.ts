@@ -20,6 +20,7 @@ import { Context } from 'cordis'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { Config, resolveConfig } from './config.ts'
 import type { ResolvedConfig } from './config.ts'
 import { classifyL1 } from './classifier.ts'
@@ -30,6 +31,9 @@ import type { DecisionStage } from './audit.ts'
 import { DenialTracker } from './tracker.ts'
 
 export const name = 'auto-approval'
+
+/** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
+export const NS = settingsNamespace('auto-approval')
 
 export { Config } from './config.ts'
 
@@ -73,17 +77,51 @@ function callFacts(exec: ToolExecution): { agent: Agent | undefined; callId: str
 /**
  * 插件入口：挂载 `tools/pre-execute` 瀑布（prepend 最先跑）+ L0 deny 的
  * 单调 guard。配置非法直接 throw（fail-loud，M1）。
+ *
+ * 配置走 `installSettingsSection`（settings 命名空间 `auto-approval`）：
+ * composition entry 是 base 层，`$DSH_HOME/settings.yaml` 的
+ * `auto-approval:` section 和 Web UI 设置页是 user 层，改动**热生效**——
+ * `enabled` 就是 Web UI 里的 automode 开关。`validate` 钩子让带非法正则
+ * / 不成对路由的写在提交前被拒（UI 层 fail-loud）。settings 服务缺席的
+ * 组合（如 headless）自动回退 entry config。
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  const resolved: ResolvedConfig = resolveConfig(config)
-  const tracker = new DenialTracker(resolved.consecutiveDenyLimit)
+  let current: () => Config = () => config
+  let resolved: ResolvedConfig = resolveConfig(config)
+  let tracker = new DenialTracker(resolved.consecutiveDenyLimit)
   const logger = ctx.logger('auto-approval')
 
+  const arm = (): void => {
+    logger.info(
+      `auto-approval armed: ${resolved.deny.length} deny / ${resolved.ask.length} ask patterns, ` +
+      `${resolved.autoApproveTools.size} auto-approve tools, consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` +
+      (resolved.classifier === undefined
+        ? ', L1 disabled'
+        : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`),
+    )
+  }
+
+  let settingsAttached = false
+  installSettingsSection(ctx, NS, Config, config, {
+    setSource: (source) => { current = source },
+    // 拒绝无法执行的写（非法正则、不成对路由）：throw 使 update/replace 失败，
+    // 运行中的实例保留上一份好配置。
+    validate: (value) => { resolveConfig(value) },
+    onChange: () => {
+      settingsAttached = true
+      resolved = resolveConfig(current())
+      // 配置换了计数语义也可能变（如新的 limit），重置防失控计数最保守。
+      tracker = new DenialTracker(resolved.consecutiveDenyLimit)
+      arm()
+    },
+  })
+
   // M3：L0 deny 注册为单调 guard——在所有 pre-execute listener 之后执行，
-  // 只能 deny 不能 allow，其它 prepend 插件旁路不掉这条硬底线。
-  // ctx.tools 缺席（罕见：core 未加载 tools）时降级为只挂瀑布并告警。
+  // 只能 deny 不能 allow，其它 prepend 插件旁路不掉这条硬底线。guard 读
+  // thunk，settings 热更新即时生效。ctx.tools 缺席（罕见：core 未加载
+  // tools）时降级为只挂瀑布并告警。
   if (ctx.get('tools') !== undefined) {
-    ctx.tools.guard(createDenyGuard(resolved))
+    ctx.tools.guard(createDenyGuard(() => resolved))
   } else {
     logger.warn('ctx.tools is not available; L0 deny guard NOT registered (pre-execute listener still active)')
   }
@@ -189,13 +227,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     return next()
   }, { prepend: true })
 
-  logger.info(
-    `auto-approval armed: ${resolved.deny.length} deny / ${resolved.ask.length} ask patterns, ` +
-    `${resolved.autoApproveTools.size} auto-approve tools, consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` +
-    (resolved.classifier === undefined
-      ? ', L1 disabled'
-      : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`),
-  )
+  // settings 服务缺席（无 inject 回调）时，entry config 已在上面手动 resolve。
+  if (!settingsAttached) arm()
 }
 
 export default apply

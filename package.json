@@ -35,6 +35,7 @@
     "@deepseek-ai/dsh-agent": "^0.0.1",
     "@deepseek-ai/dsh-llm": "^0.0.1",
     "@deepseek-ai/dsh-session": "^0.0.1",
+    "@deepseek-ai/dsh-settings": "^0.0.1",
     "@deepseek-ai/dsh-timeout": "^0.0.1",
     "@deepseek-ai/dsh-tools": "^0.0.1",
     "cordis": "^4.0.0-rc.7"
@@ -46,6 +47,7 @@
     "@deepseek-ai/dsh-agent": "file:../../test-Andy8647/packages/core/agent",
     "@deepseek-ai/dsh-llm": "file:../../test-Andy8647/packages/llm/llm",
     "@deepseek-ai/dsh-session": "file:../../test-Andy8647/packages/core/session",
+    "@deepseek-ai/dsh-settings": "file:../../test-Andy8647/packages/settings/settings",
     "@deepseek-ai/dsh-timeout": "file:../../test-Andy8647/packages/util/timeout",
     "@deepseek-ai/dsh-tools": "file:../../test-Andy8647/packages/core/tools",
     "@types/node": "^26.1.2",

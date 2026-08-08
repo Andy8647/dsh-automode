@@ -21,6 +21,9 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: file:../../test-Andy8647/packages/core/session
         version: file:../../test-Andy8647/packages/core/session(@deepseek-ai/dsh-llm@file:../../test-Andy8647/packages/llm/llm(@deepseek-ai/dsh-timeout@file:../../test-Andy8647/packages/util/timeout(cordis@4.0.0-rc.7))(cordis@4.0.0-rc.7))(cordis@4.0.0-rc.7)
+      '@deepseek-ai/dsh-settings':
+        specifier: file:../../test-Andy8647/packages/settings/settings
+        version: file:../../test-Andy8647/packages/settings/settings(cordis@4.0.0-rc.7)(schemastery@3.18.0)
       '@deepseek-ai/dsh-timeout':
         specifier: file:../../test-Andy8647/packages/util/timeout
         version: file:../../test-Andy8647/packages/util/timeout(cordis@4.0.0-rc.7)
@@ -71,6 +74,14 @@ packages:
       '@deepseek-ai/dsh-llm': ^0.0.1
       '@deepseek-ai/dsh-scope': ^0.0.1
       cordis: ^4.0.0-rc.7
+
+  '@deepseek-ai/dsh-settings@file:../../test-Andy8647/packages/settings/settings':
+    resolution: {directory: ../../test-Andy8647/packages/settings/settings, type: directory}
+    peerDependencies:
+      '@deepseek-ai/dsh-brand': ^0.0.1
+      '@deepseek-ai/dsh-invariants': ^0.0.1
+      cordis: ^4.0.0-rc.7
+      schemastery: ^3.18.0
 
   '@deepseek-ai/dsh-timeout@file:../../test-Andy8647/packages/util/timeout':
     resolution: {directory: ../../test-Andy8647/packages/util/timeout, type: directory}
@@ -790,6 +801,11 @@ snapshots:
     dependencies:
       '@deepseek-ai/dsh-llm': file:../../test-Andy8647/packages/llm/llm(@deepseek-ai/dsh-timeout@file:../../test-Andy8647/packages/util/timeout(cordis@4.0.0-rc.7))(cordis@4.0.0-rc.7)
       cordis: 4.0.0-rc.7
+
+  '@deepseek-ai/dsh-settings@file:../../test-Andy8647/packages/settings/settings(cordis@4.0.0-rc.7)(schemastery@3.18.0)':
+    dependencies:
+      cordis: 4.0.0-rc.7
+      schemastery: 3.18.0
 
   '@deepseek-ai/dsh-timeout@file:../../test-Andy8647/packages/util/timeout(cordis@4.0.0-rc.7)':
     dependencies:

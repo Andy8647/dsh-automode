@@ -61,11 +61,13 @@ export const ASK_REASON = 'auto-approval: this call requires manual approval.'
  * M3：由 L0 deny 规则构造单调 guard。guard 在所有 `tools/pre-execute`
  * listener 之后、tool body 之前执行，只能 deny 不能 allow——即使另一个
  * prepend 插件把我们的瀑布 listener 旁路掉，L0 硬底线依然生效。
- * @param config - 解析后配置（正则已预编译）。
+ * @param getConfig - 解析后配置的 thunk（正则已预编译）；每次调用重读，
+ *   settings 热更新即时生效。
  * @returns 可直接传给 `ctx.tools.guard()` 的同步 guard。
  */
-export function createDenyGuard(config: ResolvedConfig): ToolGuard {
+export function createDenyGuard(getConfig: () => ResolvedConfig): ToolGuard {
   return (execution: Readonly<ToolExecution>): string | undefined => {
+    const config = getConfig()
     if (!config.enabled) return undefined
     const text = extractMatchableText(execution.arguments)
     if (text === undefined) return undefined

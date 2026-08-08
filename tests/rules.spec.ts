@@ -73,7 +73,7 @@ describe('createDenyGuard（M2/M3）', () => {
   }) as unknown as ToolExecution
 
   it('命中 deny 规则返回通用文案，且不包含 pattern', () => {
-    const guard = createDenyGuard(resolveConfig({ denyPatterns: ['secret-pattern'] }))
+    const guard = createDenyGuard(() => resolveConfig({ denyPatterns: ['secret-pattern'] }))
     const reason = guard(exec('run secret-pattern now'))
     expect(reason).toBe(DENY_REASON)
     expect(reason).not.toContain('secret-pattern')
@@ -81,12 +81,12 @@ describe('createDenyGuard（M2/M3）', () => {
   })
 
   it('未命中返回 undefined（单调：guard 永远不能 allow）', () => {
-    const guard = createDenyGuard(resolveConfig({ denyPatterns: ['secret-pattern'] }))
+    const guard = createDenyGuard(() => resolveConfig({ denyPatterns: ['secret-pattern'] }))
     expect(guard(exec('echo hello'))).toBeUndefined()
   })
 
   it('disabled 时不拦截', () => {
-    const guard = createDenyGuard(resolveConfig({ enabled: false, denyPatterns: ['rm'] }))
+    const guard = createDenyGuard(() => resolveConfig({ enabled: false, denyPatterns: ['rm'] }))
     expect(guard(exec('rm -rf /'))).toBeUndefined()
   })
 })

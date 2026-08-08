@@ -155,6 +155,68 @@ describe('防失控（M6）', () => {
   })
 })
 
+describe('settings 热更新（Web UI 开关）', () => {
+  /** stub settings 服务：register 返回可控 scope，flip 模拟 UI 写入。 */
+  function provideSettings(ctx: Context, initial: Record<string, unknown>): { flip(patch: Record<string, unknown>): void } {
+    let value = initial
+    const watchers: Array<() => void> = []
+    let validate: ((v: unknown) => void) | undefined
+    ctx.provide('settings', {
+      register(_ns: string, _schema: unknown, opts?: { validate?: (v: unknown) => void }) {
+        validate = opts?.validate
+        validate?.(value)
+        return {
+          get: () => value,
+          watch(cb: () => void) { watchers.push(cb); return () => {} },
+        }
+      },
+    })
+    return {
+      flip(patch) {
+        const next = { ...value, ...patch }
+        // 真实服务在提交前跑 validate；坏写 throw，不提交、watcher 不触发
+        validate?.(next)
+        value = next
+        for (const cb of watchers) cb()
+      },
+    }
+  }
+
+  it('enabled 热切换：UI 关掉后 deny 规则立即不再拦截，开回来恢复', async () => {
+    const ctx = new Context()
+    const guards: Array<(exec: Readonly<ToolExecution>) => string | undefined> = []
+    ctx.provide('tools', {
+      guard(g: (exec: Readonly<ToolExecution>) => string | undefined) { guards.push(g); return () => {} },
+    })
+    const settings = provideSettings(ctx, { enabled: true, denyPatterns: ['hot-secret'] })
+    apply(ctx, { denyPatterns: ['hot-secret'] })
+    const run = (exec: ToolExecution) => ctx.waterfall('tools/pre-execute', exec, async (): Promise<PreToolDecision> => ALLOW)
+
+    const exec = () => makeExec('bash', { command: 'hot-secret' })
+    expect(await run(exec())).toMatchObject({ kind: 'deny' })
+    settings.flip({ enabled: false })
+    expect(await run(exec())).toBe(ALLOW)
+    // guard 同样热生效
+    expect(guards[0]?.(exec())).toBeUndefined()
+    settings.flip({ enabled: true })
+    expect(await run(exec())).toMatchObject({ kind: 'deny' })
+    expect(guards[0]?.(exec())).toBe(DENY_REASON)
+  })
+
+  it('非法写入（坏正则）被 validate 拒绝，运行中的配置不变', async () => {
+    const ctx = new Context()
+    ctx.provide('tools', { guard: () => () => {} })
+    const settings = provideSettings(ctx, { denyPatterns: ['ok-pattern'] })
+    apply(ctx, { denyPatterns: ['ok-pattern'] })
+    const run = (exec: ToolExecution) => ctx.waterfall('tools/pre-execute', exec, async (): Promise<PreToolDecision> => ALLOW)
+    // 先跑一次：注入回调在微任务里 attach，await 过后 validate 才已注册
+    expect(await run(makeExec('bash', { command: 'ok-pattern' }))).toMatchObject({ kind: 'deny' })
+    expect(() => settings.flip({ denyPatterns: ['(broken'] })).toThrow(/invalid deny pattern/)
+    // 旧配置仍在生效
+    expect(await run(makeExec('bash', { command: 'ok-pattern' }))).toMatchObject({ kind: 'deny' })
+  })
+})
+
 describe('L1 LLM classifier', () => {
   const fastRoute = { classifierFastProvider: 'p', classifierFastModel: 'm' }
 
