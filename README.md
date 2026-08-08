@@ -122,7 +122,40 @@ auto-approval:
 
 ## 审计
 
-每次判定落一条 `auto-approval/decision` session 事件（log-only，不进模型历史）：tool、callId、stage（`L0-deny` / `L0-ask` / `escalation-bypass` / `whitelist` / `L1-fast` / `L1-deep` / `L1-fail-closed` / `paused` / `default-allow`）、decision、命中的 pattern（pattern 的唯一落点）、L1 路由与耗时。可回放、可复盘。审计 append 失败只记 warn，不影响审批决策。
+每次判定落两条可观测记录，都是 best-effort（失败只 warn，不影响审批决策）：
+
+1. **session 事件** `auto-approval/decision`（log-only，不进模型历史）：tool、callId、stage（`L0-deny` / `L0-ask` / `escalation-bypass` / `whitelist` / `L1-fast` / `L1-deep` / `L1-fail-closed` / `paused` / `default-allow`）、decision、命中的 pattern（pattern 的唯一落点）、L1 路由与耗时。查法：
+
+```sh
+zstd -dc ~/.dsh/sessions/--*/session-*/session.jsonl.zstd | rg auto-approval
+```
+
+2. **独立决策日志** `$DSH_HOME/logs/auto-approval.log`（默认 `~/.dsh/logs/auto-approval.log`）：每行一条 JSON。首行是 `auto-approval/armed` 配置摘要（直接回答「插件是否启用、规则数、L1 是否开」），之后每条是判定。UI 无通道渲染插件决策（host api-proxy 暴露白名单 + client toolviews 硬编码），文件日志是唯一不依赖 UI 的观测手段。查法：
+
+```sh
+tail -f ~/.dsh/logs/auto-approval.log
+```
+
+## 真机验证（2026-08-08，Web 会话，approval policy=ask + workspace-write 沙箱）
+
+| 用例 | 审计记录 | 结果 |
+|---|---|---|
+| `echo danger_test`（测试 deny 规则） | `L0-deny · deny · pattern: echo\s+danger_test` | ✅ 模型收到 deny 错误，拒绝执行 |
+| `sudo echo hi` | `L0-ask · ask · pattern: sudo\s` → 用户批准 → 沙箱拦 exec → escalation 重试 → `escalation-bypass · allow` | ✅ 审批链路走通；sudo 无 TTY 失败（exit 1） |
+| `ls` 等常规命令 | `default-allow · allow` | ✅ 未命中规则直接放行 |
+
+要点：
+
+- **两层防线分工**：插件管「调用危险不危险」（pre-execute），沙箱管「文件效应越界」（exec 权限）。system 级命令即使过了插件与审批，workspace-write 沙箱仍拦 exec，需升级 danger-full-access。
+- **escalation-bypass（M5）**：带 sandbox 升级参数的调用不再重复走 ask/L1——人已在 escalation 审批中批准，避免双重弹窗。
+- **规则漏网案例**：`rm -rf ./*` 曾被默认规则 `rm\s+.../\s*$` 放过（只匹配以 `/` 结尾）。已补 `rm\s+(-[a-z]*[fr][a-z]*\s+)*(\./)?\*\s*$` 与 `rm\s+(-[a-z]*[fr][a-z]*\s+)*\.\/?\s*$`（覆盖 `rm -rf ./*` / `rm -rf *` / `rm -rf .` / `rm -rf ./`，不误伤 `rm -rf foo/`）。**pattern 匹配 command 全文**，`echo rm -rf ./*` 这类打印也会命中（保守方向，fail-closed）。
+- **L1 classifier 尚未真机验证**：L0 规则引擎是确定性正则，本次覆盖；L1（LLM 两阶段意图判定）需配好 classifierFastProvider/Model 后单独验证。
+
+## 已知限制
+
+- **Web UI 设置页无 section**：host `api-proxy` 的 `exposedNamespaces()` 硬编码白名单（`permission` / `ui-onboarding` / 可配置模型 provider），第三方插件的 settings namespace 默认不暴露给配置客户端；且设置页 section 是 client 侧 slots 注册制，需要配套 dshClient 伴侣包。配置请走 `settings.yaml`（热重载）。计划向 dsh-external/issues 提 issue 请求开放暴露通道。
+- **settings.yaml 的 section 是整体替换**（数组不合并）：覆盖某字段需完整列出。
+- **L1 未真机验证**：见上。
 
 ## 开发
 
