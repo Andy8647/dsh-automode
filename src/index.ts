@@ -1,135 +1,200 @@
 /**
  * DSH 权限自动审批插件 — `@deepseek-ai/dsh-auto-approval`
  *
- * 在 `tools/pre-execute` 瀑布最前挂一个 classifier，给 dsh 的 approval
+ * 在 `tools/pre-execute` 瀑布最前挂一个三层 classifier，给 dsh 的 approval
  * policy 增加第三档 `auto`（现有：`ask` / `never`）：
  *
- *   低风险 tool call  → allow（直接放行，不等用户）
- *   明确危险操作      → deny（返回 Error: <reason>，模型收到拒绝）
- *   拿不准的操作      → ask（转 ctx.approval 问用户）
+ *   L0 规则引擎（硬底线）→ L1 LLM classifier（意图对齐，可配）→ L2 人工兜底
  *
- * 对标 Claude Code automode / Codex "approve for me"，但比它们多一档：
- * 决策不是二元的 auto-accept / 全停，而是 allow / deny / ask 三态。
- *
- * 设计原则：
- * - 默认 allow（与 dsh tools 瀑布的 fallback 一致）；只拦截"值得拦"的调用
- * - deny 优先于 ask（明确危险的不打扰用户）
- * - classifier 可插拔：v1 内置规则引擎（正则黑白名单），未来可换 LLM classifier
+ * 设计要点（详见 README「方案设计」）：
+ * - L0 deny 同时走 `ctx.tools.guard()` 单调注册（M3），prepend 旁路不掉
+ * - deny/ask 的 reason 是通用文案，pattern 只进审计与日志（M2）
+ * - 检测到 sandbox escalation 参数即豁免 ask/L1，避免双重审批（M5）
+ * - 连续 deny 达上限后本 turn 暂停自动放行（M6），turn 边界从 session log 推导
+ * - L1 一切失败 fail-closed 转 ask，绝不默认放行
  *
  * @module @deepseek-ai/dsh-auto-approval
  */
 
 import { Context } from 'cordis'
-import z from 'schemastery'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { JsonValue } from '@deepseek-ai/dsh-session'
+import { Config, resolveConfig } from './config.ts'
+import type { ResolvedConfig } from './config.ts'
+import { classifyL1 } from './classifier.ts'
+import type { LlmLike } from './classifier.ts'
+import { ASK_REASON, createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchFirst } from './rules.ts'
+import { audit } from './audit.ts'
+import type { DecisionStage } from './audit.ts'
+import { DenialTracker } from './tracker.ts'
 
 export const name = 'auto-approval'
 
-/** 插件配置（全部可选，schemastery schema 提供默认值——上游惯例）。 */
-export interface Config {
-  /** 总开关：false 时完全旁路（瀑布 fallback 为 allow）。 */
-  enabled?: boolean
-  /** 命中即 deny 的正则列表（硬规则，匹配 bash command 全文，区分大小写）。 */
-  denyPatterns?: string[]
-  /** 命中即 ask（转人工审批）的正则列表。 */
-  askPatterns?: string[]
-  /** 直接放行的 tool name 白名单（如 read、grep、ls 类只读工具）。 */
-  autoApproveTools?: string[]
-  /** 连续被拒/转人工 N 次后暂停自动放行，强制用户介入（防失控，替代 per-turn 限额）。 */
-  consecutiveDenyLimit?: number
-}
+export { Config } from './config.ts'
 
-/** Runtime configuration schema (schemastery fills defaults before construction). */
-export const Config: z<Config> = z.object({
-  enabled: z.boolean().default(true),
-  denyPatterns: z.array(z.string()).default([
-    // 系统级破坏性操作
-    'rm\\s+(-[a-z]*[fr][a-z]*\\s+)*/\\s*$',
-    'mkfs\\.', 'dd\\s+if=.*of=/dev/',
-    // 管道直灌 shell（curl | sh 类供应链风险）
-    '\\|\\s*(ba)?sh\\s*$',
-    // 危险网络外联 + 凭据外传
-    'curl\\s+[^|]*\\|\\s*(ba)?sh',
-    'wget\\s+[^|]*\\|\\s*(ba)?sh',
-  ]),
-  askPatterns: z.array(z.string()).default([
-    // 写工作区外的系统路径
-    'sudo\\s',
-    '\\/etc\\/',
-    '\\/usr\\/',
-    '\\/var\\/',
-    '\\/Library\\/',
-    '\\/System\\/',
-    'git\\s+push\\s+--force',
-    'git\\s+reset\\s+--hard',
-    'git\\s+clean\\s+-[a-z]*[fd][a-z]*',
-    'drop\\s+table',
-    'DROP\\s+TABLE',
-  ]),
-  autoApproveTools: z.array(z.string()).default([
-    'read', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
-  ]),
-  consecutiveDenyLimit: z.number().default(3),
-})
+/** 连续 deny 达上限后转人工的文案（通用，不含计数细节以外信息）。 */
+const PAUSED_REASON =
+  'auto-approval: auto-approval is paused after repeated denials this turn. ' +
+  'Stop attempting blocked actions and check with the user before continuing.'
 
-/** 每 agent 的连续拒绝计数（达到 consecutiveDenyLimit 后暂停自动放行；TODO 挂 agent 事件在 turn 边界重置）。 */
-const consecutiveDenyCounts = new WeakMap<object, number>()
+/** L1 不可用（无模型服务或无用户意图上下文）时 fail-closed 的文案。 */
+const L1_UNAVAILABLE_REASON = 'auto-approval: automatic classifier is unavailable; deferring to manual approval.'
 
-function matchesAny(command: string, patterns: string[]): string | undefined {
-  for (const pat of patterns) {
-    try {
-      if (new RegExp(pat).test(command)) return pat
-    } catch {
-      // 用户配了非法正则：跳过，不阻断执行
-    }
+/** L1 判定失败（超时/解析失败）时 fail-closed 的文案。 */
+const L1_FAILED_REASON = 'auto-approval: automatic classifier failed; deferring to manual approval.'
+
+/**
+ * 从 session log 提取最近一条真实用户消息的文本（L1 的意图输入）。
+ * 只看 `source.kind === 'user'` 的消息：plugin 注入（ask-user 类工具的
+ * 返回、agent.inject 上下文）都不算授权。往回扫到 log 开头为止；这条
+ * 路径只在 L1 启用且未被 L0/白名单短路时走到，频率低，线性扫可接受。
+ */
+function latestUserIntent(agent: Agent | undefined): string | undefined {
+  if (agent === undefined) return undefined
+  const events = agent.session.events
+  for (let seq = events.length - 1; seq >= 0; seq--) {
+    const event = events[seq]
+    if (event === undefined || event.type !== 'user/message' || event.data.source.kind !== 'user') continue
+    const text = event.data.content
+      .map(block => block.type === 'text' ? block.text : `[${block.type} content]`)
+      .join('\n')
+      .trim()
+    if (text.length > 0) return text
   }
   return undefined
 }
 
-/**
- * v1 classifier：规则引擎。
- * 决策顺序：deny > ask > allow（autoApproveTools 白名单在 deny 之后仍生效——
- * 即白名单工具若命令命中 deny 模式依然拒绝，宁可严格）。
- */
-function classify(exec: ToolExecution, config: Config): PreToolDecision {
-  // bash 等携带命令字符串的工具：对 command 做规则匹配（ToolExecution.arguments 是
-  // unknown，需要显式收窄；run_code 的参数是 code，独立分支见 TODO）
-  const args = exec.arguments as { command?: unknown } | undefined
-  const command = typeof args?.command === 'string' ? args.command : ''
-
-  if (command.length > 0) {
-    const denied = matchesAny(command, config.denyPatterns)
-    if (denied !== undefined) {
-      return { kind: 'deny', reason: `auto-approval: command matches deny pattern /${denied}/` }
-    }
-    const ask = matchesAny(command, config.askPatterns)
-    if (ask !== undefined) {
-      return { kind: 'ask', reason: `auto-approval: command matches ask pattern /${ask}/` }
-    }
-  }
-
-  if (config.autoApproveTools.includes(exec.name)) return { kind: 'allow' }
-
-  // 未命中任何规则：放行（与瀑布 fallback 一致，不制造噪音）
-  return { kind: 'allow' }
+/** 一次调用的决策上下文：tracker/audit 共用的 agent 与 callId 提取。 */
+function callFacts(exec: ToolExecution): { agent: Agent | undefined; callId: string } {
+  return { agent: exec.agent, callId: String(exec.callId) }
 }
 
 /**
- * 插件入口：挂载 `tools/pre-execute` 瀑布，prepend 保证跑在其它 listener 之前。
+ * 插件入口：挂载 `tools/pre-execute` 瀑布（prepend 最先跑）+ L0 deny 的
+ * 单调 guard。配置非法直接 throw（fail-loud，M1）。
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  // schemastery 用 schema 默认值填充缺省字段（上游惯例：apply 签名无默认值，schema 负责）
-  const resolved = Config(config)
+  const resolved: ResolvedConfig = resolveConfig(config)
+  const tracker = new DenialTracker(resolved.consecutiveDenyLimit)
+  const logger = ctx.logger('auto-approval')
 
-  ctx.on('tools/pre-execute', (exec, next) => {
+  // M3：L0 deny 注册为单调 guard——在所有 pre-execute listener 之后执行，
+  // 只能 deny 不能 allow，其它 prepend 插件旁路不掉这条硬底线。
+  // ctx.tools 缺席（罕见：core 未加载 tools）时降级为只挂瀑布并告警。
+  if (ctx.get('tools') !== undefined) {
+    ctx.tools.guard(createDenyGuard(resolved))
+  } else {
+    logger.warn('ctx.tools is not available; L0 deny guard NOT registered (pre-execute listener still active)')
+  }
+
+  ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
     if (!resolved.enabled) return next()
-    const decision = classify(exec, resolved)
-    if (decision.kind === 'allow') return next()
-    return decision
+    const { agent, callId } = callFacts(exec)
+    const text = extractMatchableText(exec.arguments)
+
+    // ---- L0 deny（硬底线，最高优先级；escalation 豁免不适用） ----
+    if (text !== undefined) {
+      const hit = matchFirst(text, resolved.deny)
+      if (hit !== undefined) {
+        tracker.recordDenial(agent)
+        const pattern = resolved.denySources[hit.index]
+        logger.info(`deny ${exec.name} (${callId}): matched deny pattern /${pattern ?? '?'}/`)
+        audit(ctx, agent, {
+          tool: exec.name, callId, stage: 'L0-deny', decision: 'deny',
+          ...pattern === undefined ? {} : { pattern },
+        })
+        return { kind: 'deny', reason: DENY_REASON }
+      }
+    }
+
+    // ---- M6 防失控：本 turn 连续 deny 达上限，暂停自动放行 ----
+    if (tracker.isPaused(agent)) {
+      audit(ctx, agent, {
+        tool: exec.name, callId, stage: 'paused', decision: 'ask',
+        detail: `consecutiveDenyLimit=${resolved.consecutiveDenyLimit} reached`,
+      })
+      return { kind: 'ask', reason: PAUSED_REASON }
+    }
+
+    // ---- M5：sandbox escalation 请求豁免 ask/L1（避免双重审批） ----
+    if (hasEscalationArgs(exec.arguments)) {
+      audit(ctx, agent, { tool: exec.name, callId, stage: 'escalation-bypass', decision: 'allow' })
+      return next()
+    }
+
+    // ---- L0 ask（转人工） ----
+    if (text !== undefined) {
+      const hit = matchFirst(text, resolved.ask)
+      if (hit !== undefined) {
+        const pattern = resolved.askSources[hit.index]
+        logger.info(`ask ${exec.name} (${callId}): matched ask pattern /${pattern ?? '?'}/`)
+        audit(ctx, agent, {
+          tool: exec.name, callId, stage: 'L0-ask', decision: 'ask',
+          ...pattern === undefined ? {} : { pattern },
+        })
+        return { kind: 'ask', reason: ASK_REASON }
+      }
+    }
+
+    // ---- 只读工具白名单 ----
+    if (resolved.autoApproveTools.has(exec.name)) {
+      audit(ctx, agent, { tool: exec.name, callId, stage: 'whitelist', decision: 'allow' })
+      return next()
+    }
+
+    // ---- L1 LLM classifier（配置 fast 路由后启用） ----
+    if (resolved.classifier !== undefined) {
+      const llm = ctx.get('llm') as LlmLike | undefined
+      const intent = latestUserIntent(agent)
+      if (llm === undefined || intent === undefined) {
+        const detail = llm === undefined ? 'no ctx.llm service' : 'no user message in session log'
+        audit(ctx, agent, { tool: exec.name, callId, stage: 'L1-fail-closed', decision: 'ask', detail })
+        return { kind: 'ask', reason: L1_UNAVAILABLE_REASON }
+      }
+      const outcome = await classifyL1(llm, resolved.classifier, {
+        intent,
+        toolName: exec.name,
+        args: exec.arguments as JsonValue,
+        ...agent === undefined ? {} : { sessionId: agent.session.id },
+        signal: exec.signal,
+      })
+      if (outcome.status === 'fail-closed') {
+        logger.warn(`L1 ${outcome.stage} failed for ${exec.name} (${callId}): ${outcome.error}`)
+        audit(ctx, agent, { tool: exec.name, callId, stage: 'L1-fail-closed', decision: 'ask', detail: outcome.error })
+        return { kind: 'ask', reason: L1_FAILED_REASON }
+      }
+      const stage: DecisionStage = outcome.stage
+      if (outcome.status === 'deny') {
+        tracker.recordDenial(agent)
+        logger.info(`L1 deny ${exec.name} (${callId})${outcome.stage === 'L1-deep' ? `: ${outcome.rationale}` : ''}`)
+        audit(ctx, agent, {
+          tool: exec.name, callId, stage, decision: 'deny', route: outcome.route,
+          latencyMs: outcome.latencyMs,
+          ...outcome.stage === 'L1-deep' ? { detail: outcome.rationale } : {},
+        })
+        return { kind: 'deny', reason: DENY_REASON }
+      }
+      audit(ctx, agent, {
+        tool: exec.name, callId, stage, decision: outcome.status, route: outcome.route,
+        latencyMs: outcome.latencyMs,
+        ...outcome.stage === 'L1-deep' ? { detail: outcome.rationale } : {},
+      })
+      if (outcome.status === 'ask') return { kind: 'ask', reason: ASK_REASON }
+      return next()
+    }
+
+    // ---- 未命中任何规则：默认放行（与瀑布 fallback 一致） ----
+    audit(ctx, agent, { tool: exec.name, callId, stage: 'default-allow', decision: 'allow' })
+    return next()
   }, { prepend: true })
 
-  ctx.logger('auto-approval').info(
-    `auto-approval armed: ${resolved.denyPatterns.length} deny / ${resolved.askPatterns.length} ask patterns, ${resolved.autoApproveTools.length} auto-approve tools`,
+  logger.info(
+    `auto-approval armed: ${resolved.deny.length} deny / ${resolved.ask.length} ask patterns, ` +
+    `${resolved.autoApproveTools.size} auto-approve tools, consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` +
+    (resolved.classifier === undefined
+      ? ', L1 disabled'
+      : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`),
   )
 }
 

@@ -22,7 +22,14 @@ model → tools/pre-execute waterfall
               └─ allow → next() 委托下游（默认行为）
 ```
 
-与 dsh 原生 sandbox escalation 的关系：两层审批并存、互不替代——沙箱管"文件效应越界"，本插件管"调用本身的危险性"。
+与 dsh 原生 sandbox escalation 的关系：两层审批并存、互不替代——沙箱管"文件效应越界"，本插件管"调用本身的危险性"。检测到调用携带 escalation 参数（`sandbox_permissions` + `justification`）时，本插件跳过 ask 规则与 L1 直接放行，把审批留给 escalation 自己的通道，避免双重审批（L0 deny 硬底线不受此豁免）。
+
+硬性保证：
+
+- **L0 deny 双保险**：deny 规则除瀑布 listener 外还注册为 `ctx.tools.guard()` 单调 guard——在所有 pre-execute listener 之后执行，只能 deny 不能 allow，其它 prepend 插件旁路不掉
+- **reason 不泄露规则**：deny/ask 返回给模型的是通用文案，命中的 pattern 只进审计事件和日志
+- **配置 fail-loud**：非法正则、不成对的 provider/model 在插件加载时直接 throw，不在运行时静默降级
+- **防失控**：同一 turn 内连续被 deny 达 `consecutiveDenyLimit`（默认 3）后暂停自动放行，本 turn 内一律转人工；turn 边界从 session log 的 `turn/start` 事件推导，新 turn 自动恢复。无 agent 的调用不参与计数
 
 ## 方案设计
 
@@ -49,7 +56,7 @@ tool call ──→ L0 规则引擎（硬规则）
                             └─ 超时/解析失败 → fail-closed 转 ask
 ```
 
-### L1 LLM classifier 设计（对齐 CC automode，规划中）
+### L1 LLM classifier 设计（对齐 CC automode，已实现）
 
 - **输入范围（防注入关键）**：只看**用户消息 + 当前 tool call**（工具名 + 参数）。**不看** assistant 的推理、回复和所有 tool 结果——恶意指令大多从 tool 输出进入上下文，排除它们就是最有效的防 prompt injection 手段。dsh 的 `tools/pre-execute` 接缝天然只提供这些信息，零额外工程
 - **两阶段判定（省 token）**：Stage 1 fast 单 token 过滤（`0`=allow / `1`=审查）；只有 flagged 的调用才进 Stage 2 chain-of-thought 深查。fast 与 deep 阶段可分别配置模型（`ctx.llm` 指定任意已注册模型，如 fast 用轻量模型）
@@ -92,32 +99,50 @@ auto-approval:
     - grep
     - find
   consecutiveDenyLimit: 3
+  # 可选：启用 L1 LLM classifier（不配则不启用，L0 未命中即 allow）
+  # classifierFastProvider: deepseek
+  # classifierFastModel: deepseek-chat
+  # classifierDeepProvider: deepseek   # 缺省沿用 fast
+  # classifierDeepModel: deepseek-reasoner
+  # classifierTimeoutMs: 10000
+  # classifierGuidance: '不允许任何网络外联调用'
 ```
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|
 | `enabled` | `true` | 总开关，false 时完全旁路 |
-| `denyPatterns` | 见 `src/index.ts` | 正则，命中 command 即 `deny`（硬规则，优先级最高） |
-| `askPatterns` | 见 `src/index.ts` | 正则，命中 command 即 `ask` 转人工 |
+| `denyPatterns` | 见 `src/config.ts` | 正则，命中 command/code 即 `deny`（硬规则，优先级最高） |
+| `askPatterns` | 见 `src/config.ts` | 正则，命中 command/code 即 `ask` 转人工 |
 | `autoApproveTools` | 只读工具列表 | tool name 白名单，直接放行 |
-| `consecutiveDenyLimit` | `3` | 连续被拒/转人工 N 次后暂停自动放行，强制用户介入（防失控） |
-| `classifierFastModel` | 未设置 | 规划中：L1 Stage 1 fast 过滤用模型，设置后启用 L1 |
-| `classifierDeepModel` | 未设置 | 规划中：L1 Stage 2 深查用模型，默认与 fast 相同 |
+| `consecutiveDenyLimit` | `3` | 同一 turn 连续被 deny N 次后暂停自动放行，强制用户介入（防失控） |
+| `classifierFastProvider` / `classifierFastModel` | 未设置 | L1 Stage 1 fast 过滤的模型路由（须成对）；设置后启用 L1 |
+| `classifierDeepProvider` / `classifierDeepModel` | 未设置 | L1 Stage 2 深查的模型路由（须成对），缺省沿用 fast |
+| `classifierTimeoutMs` | `10000` | L1 单次模型调用超时，超时 fail-closed 转 ask |
+| `classifierGuidance` | 未设置 | 用户自定义判定准则，作为 guidance 注入 L1 prompt（非硬规则） |
+
+## 审计
+
+每次判定落一条 `auto-approval/decision` session 事件（log-only，不进模型历史）：tool、callId、stage（`L0-deny` / `L0-ask` / `escalation-bypass` / `whitelist` / `L1-fast` / `L1-deep` / `L1-fail-closed` / `paused` / `default-allow`）、decision、命中的 pattern（pattern 的唯一落点）、L1 路由与耗时。可回放、可复盘。审计 append 失败只记 warn，不影响审批决策。
 
 ## 开发
 
-dsh 包尚未发布 npm（内测期），本地开发需链接上游 monorepo：
+dsh 包尚未发布 npm（内测期），本地开发用 `file:` 链接上游 monorepo 的**构建产物**（`devDependencies` 指向 `../../test-Andy8647/packages/...`，相对路径按你的 clone 位置调整）：
 
 ```sh
-# 方案 A：把本包塞进 monorepo workspaces 开发
-ln -s ~/Projects/DeepSeek/plugins/dsh-auto-approval ~/Projects/DeepSeek/test-Andy8647/packages/examples/dsh-auto-approval
-cd ~/Projects/DeepSeek/test-Andy8647 && pnpm install && pnpm --filter @deepseek-ai/dsh-auto-approval run build
+# 1. 先构建上游 monorepo（产出各包的 lib/，本插件的类型与运行时都依赖它）
+cd ~/Projects/DeepSeek/test-Andy8647 && pnpm install && pnpm run build
 
-# 方案 B：独立开发，用 file: 指向本地包
-pnpm add -D @deepseek-ai/dsh-tools@file:~/Projects/DeepSeek/test-Andy8647/packages/core/tools
+# 2. 安装本插件依赖（pnpm-workspace.yaml 已设 autoInstallPeers: false——
+#    dsh 包的 peerDeps 不在 npm 上，不能自动安装）
+cd ~/Projects/DeepSeek/plugins/dsh-auto-approval && pnpm install
+
+# 3. 类型检查 / 测试 / 构建
+pnpm run typecheck   # tsc strict（含 noUncheckedIndexedAccess / exactOptionalPropertyTypes）
+pnpm run test        # vitest，40 个用例：规则引擎 / tracker / L1 / cordis 集成
+pnpm run build       # tsc 产出 lib/types → tsdown 打包 lib/index.js
 ```
 
-构建：`pnpm run build`（tsc 产出声明 → tsdown 打包 ESM）。
+注意：不要试图把本包 symlink 进 monorepo 的 `packages/*/*/`——pnpm install 会把 realpath 在工作区外的 symlink 包排除出安装（`pnpm ls -r` 能看到但 lockfile 与 node_modules 都不会有它），`file:` 链接是验证过的路径。
 
 ## License
 

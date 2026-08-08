@@ -1,0 +1,182 @@
+/**
+ * 配置 schema 与 fail-loud 解析：schemastery 负责默认值，{@link resolveConfig}
+ * 负责 schema 表达不了的校验（正则预编译、provider/model 成对、数值边界）。
+ * 任何非法配置在插件加载时直接 throw，绝不在运行时静默降级（M1）。
+ * @module @deepseek-ai/dsh-auto-approval/config
+ */
+
+import z from 'schemastery'
+
+/** 插件配置（全部可选，schemastery schema 提供默认值——上游惯例）。 */
+export interface Config {
+  /** 总开关：false 时完全旁路（瀑布 fallback 为 allow）。 */
+  enabled?: boolean
+  /** 命中即 deny 的正则列表（硬规则，匹配 command/code 全文，区分大小写）。 */
+  denyPatterns?: string[]
+  /** 命中即 ask（转人工审批）的正则列表。 */
+  askPatterns?: string[]
+  /** 直接放行的 tool name 白名单（如 read、grep、ls 类只读工具）。 */
+  autoApproveTools?: string[]
+  /** 连续被 deny N 次后暂停自动放行，本 turn 内全部转人工（防失控）。 */
+  consecutiveDenyLimit?: number
+  /** L1 Stage 1（fast 过滤）的 provider；须与 classifierFastModel 成对。 */
+  classifierFastProvider?: string
+  /** L1 Stage 1（fast 过滤）的 model；设置后启用 L1。 */
+  classifierFastModel?: string
+  /** L1 Stage 2（CoT 深查）的 provider；缺省沿用 fast。 */
+  classifierDeepProvider?: string
+  /** L1 Stage 2（CoT 深查）的 model；缺省沿用 fast。 */
+  classifierDeepModel?: string
+  /** L1 单次模型调用的超时（毫秒），超时 fail-closed 转 ask。 */
+  classifierTimeoutMs?: number
+  /** 用户自定义判定准则，作为 guidance 注入 L1 prompt（不是硬规则）。 */
+  classifierGuidance?: string
+}
+
+/** Runtime configuration schema (schemastery fills defaults before construction). */
+export const Config: z<Config> = z.object({
+  enabled: z.boolean().default(true),
+  denyPatterns: z.array(z.string()).default([
+    // 系统级破坏性操作
+    'rm\\s+(-[a-z]*[fr][a-z]*\\s+)*/\\s*$',
+    'mkfs\\.', 'dd\\s+if=.*of=/dev/',
+    // 管道直灌 shell（curl | sh 类供应链风险）
+    'curl\\s+[^|]*\\|\\s*(ba)?sh',
+    'wget\\s+[^|]*\\|\\s*(ba)?sh',
+  ]),
+  askPatterns: z.array(z.string()).default([
+    // 写工作区外的系统路径
+    'sudo\\s',
+    '\\/etc\\/',
+    '\\/usr\\/',
+    '\\/var\\/',
+    '\\/Library\\/',
+    '\\/System\\/',
+    'git\\s+push\\s+--force',
+    'git\\s+reset\\s+--hard',
+    'git\\s+clean\\s+-[a-z]*[fd][a-z]*',
+    'drop\\s+table',
+    'DROP\\s+TABLE',
+  ]),
+  autoApproveTools: z.array(z.string()).default([
+    'read', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
+  ]),
+  consecutiveDenyLimit: z.number().step(1).min(1).default(3),
+  classifierFastProvider: z.string(),
+  classifierFastModel: z.string(),
+  classifierDeepProvider: z.string(),
+  classifierDeepModel: z.string(),
+  classifierTimeoutMs: z.number().default(10_000),
+  classifierGuidance: z.string(),
+})
+
+/** 一个具体的模型路由（ctx.llm 要求 provider + model 成对）。 */
+export interface ModelRoute {
+  readonly provider: string
+  readonly model: string
+}
+
+/** L1 classifier 的解析后配置。 */
+export interface ResolvedClassifierConfig {
+  /** Stage 1 fast 单 token 过滤。 */
+  readonly fast: ModelRoute
+  /** Stage 2 CoT 深查（缺省与 fast 相同）。 */
+  readonly deep: ModelRoute
+  /** 单次模型调用超时（毫秒）。 */
+  readonly timeoutMs: number
+  /** 用户 guidance 文本（注入 prompt，非硬规则）。 */
+  readonly guidance?: string
+}
+
+/**
+ * apply() 实际使用的解析后配置：正则已预编译（M1）、路由已成对校验、
+ * 白名单已 Set 化。命中的 pattern 原文保留在 {@link denySources} /
+ * {@link askSources}（与编译结果同序），只进审计与日志，不进 deny/ask 的
+ * reason（M2）。
+ */
+export interface ResolvedConfig {
+  readonly enabled: boolean
+  readonly deny: readonly RegExp[]
+  readonly denySources: readonly string[]
+  readonly ask: readonly RegExp[]
+  readonly askSources: readonly string[]
+  readonly autoApproveTools: ReadonlySet<string>
+  readonly consecutiveDenyLimit: number
+  /** 未配置 fast 路由时为 undefined（L1 关闭，L0 未命中即 allow）。 */
+  readonly classifier?: ResolvedClassifierConfig
+}
+
+/** 预编译一组正则；任一非法即 throw（fail-loud，M1）。 */
+function compilePatterns(kind: string, patterns: readonly string[]): RegExp[] {
+  return patterns.map((source) => {
+    try {
+      return new RegExp(source)
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(`auto-approval: invalid ${kind} pattern ${JSON.stringify(source)}: ${detail}`)
+    }
+  })
+}
+
+/** 校验一对 provider/model 配置：要么都给且非空，要么都不给。 */
+function resolveRoute(
+  label: string,
+  provider: string | undefined,
+  model: string | undefined,
+): ModelRoute | undefined {
+  if (provider === undefined && model === undefined) return undefined
+  if (provider === undefined || model === undefined
+    || provider.length === 0 || model.length === 0) {
+    throw new Error(`auto-approval: ${label} provider and model must be supplied together as non-empty strings`)
+  }
+  return { provider, model }
+}
+
+/**
+ * 解析并校验配置。schema 先填默认值，这里做 schema 表达不了的校验；
+ * 任一违规 throw（插件加载失败优于运行时静默放行）。
+ * @param config - Loader 或测试传入的原始配置。
+ * @returns 不可变的解析后配置。
+ */
+export function resolveConfig(config: Config = {}): ResolvedConfig {
+  // schema 已填默认值；类型上字段仍可选（z<Config> 的输出类型），这里一次性
+  // 收窄（与上游 "schema defaults + ?? narrows" 惯例同义，只是集中在一处）。
+  const resolved = Config(config) as Config & {
+    enabled: boolean
+    denyPatterns: string[]
+    askPatterns: string[]
+    autoApproveTools: string[]
+    consecutiveDenyLimit: number
+    classifierTimeoutMs: number
+  }
+  const deny = compilePatterns('deny', resolved.denyPatterns)
+  const ask = compilePatterns('ask', resolved.askPatterns)
+  if (!Number.isInteger(resolved.consecutiveDenyLimit) || resolved.consecutiveDenyLimit < 1) {
+    throw new Error('auto-approval: consecutiveDenyLimit must be a positive integer')
+  }
+  if (!Number.isFinite(resolved.classifierTimeoutMs) || resolved.classifierTimeoutMs <= 0) {
+    throw new Error('auto-approval: classifierTimeoutMs must be a positive finite number')
+  }
+  const fast = resolveRoute('classifierFast', resolved.classifierFastProvider, resolved.classifierFastModel)
+  const deep = resolveRoute('classifierDeep', resolved.classifierDeepProvider, resolved.classifierDeepModel)
+  if (deep !== undefined && fast === undefined) {
+    throw new Error('auto-approval: classifierDeep requires classifierFast (Stage 1 always runs before Stage 2)')
+  }
+  return {
+    enabled: resolved.enabled,
+    deny,
+    denySources: resolved.denyPatterns,
+    ask,
+    askSources: resolved.askPatterns,
+    autoApproveTools: new Set(resolved.autoApproveTools),
+    consecutiveDenyLimit: resolved.consecutiveDenyLimit,
+    ...fast === undefined ? {} : {
+      classifier: {
+        fast,
+        deep: deep ?? fast,
+        timeoutMs: resolved.classifierTimeoutMs,
+        ...resolved.classifierGuidance === undefined ? {} : { guidance: resolved.classifierGuidance },
+      },
+    },
+  }
+}
