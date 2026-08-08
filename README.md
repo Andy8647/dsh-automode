@@ -72,14 +72,6 @@ pnpm add -D @deepseek-ai/dsh-tools@file:~/Projects/DeepSeek/test-Andy8647/packag
 
 构建：`pnpm run build`（tsc 产出声明 → tsdown 打包 ESM）。
 
-## Roadmap
-
-- [x] 抢注 repo + 插件骨架（pre-execute 挂点、三态决策、规则引擎 v1）
-- [ ] classifier 升级：LLM 判定（把 exec.name + arguments 喂模型打分）替代纯正则
-- [ ] 按 turn 重置的放行计数（挂 `turn/start` 事件）
-- [ ] 审计日志：每次 allow/deny/ask 落 session 事件流
-- [ ] 与 `dsh-plan-execute` 协同的完整"autopilot"体验
-
 ## License
 
 BSD-3-Clause
