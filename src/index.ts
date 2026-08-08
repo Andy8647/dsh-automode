@@ -26,7 +26,7 @@ import type { ResolvedConfig } from './config.ts'
 import { classifyL1 } from './classifier.ts'
 import type { LlmLike } from './classifier.ts'
 import { ASK_REASON, createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchFirst } from './rules.ts'
-import { audit } from './audit.ts'
+import { audit, auditArmed } from './audit.ts'
 import type { DecisionStage } from './audit.ts'
 import { DenialTracker } from './tracker.ts'
 
@@ -99,6 +99,15 @@ export function apply(ctx: Context, config: Config = {}): void {
         ? ', L1 disabled'
         : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`),
     )
+    auditArmed(ctx, {
+      deny: resolved.deny.length,
+      ask: resolved.ask.length,
+      autoApproveTools: resolved.autoApproveTools.size,
+      consecutiveDenyLimit: resolved.consecutiveDenyLimit,
+      classifier: resolved.classifier === undefined
+        ? 'disabled'
+        : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
+    })
   }
 
   let settingsAttached = false

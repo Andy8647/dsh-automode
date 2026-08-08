@@ -8,6 +8,9 @@
  */
 
 import type { Context } from 'cordis'
+import { appendFile, mkdir } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { ModelRoute } from './config.ts'
 import type { AgentLike } from './tracker.ts'
 
@@ -60,10 +63,54 @@ declare module '@deepseek-ai/dsh-session' {
 }
 
 /**
+ * 独立决策日志：`$DSH_HOME/logs/auto-approval.log`（默认 `~/.dsh/logs/...`）。
+ * UI 没有任何通道渲染插件的决策（host 白名单 + toolviews 硬编码，见 issue 调研），
+ * 文件日志是用户侧唯一不依赖 UI 的观测手段。每行一条 JSON，人读友好。
+ *
+ * 写入走串行队列（appendFile 本身无锁，同进程并发会交叉），失败只 warn，
+ * 与 session 审计一样 best-effort，绝不阻塞审批决策。
+ */
+const DSH_HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+export const DECISION_LOG_PATH = join(DSH_HOME, 'logs', 'auto-approval.log')
+
+/** 首次写入前的 mkdir 一次性准备。 */
+let logReady: Promise<void> | undefined
+function ensureLogReady(): Promise<void> {
+  logReady ??= mkdir(join(DSH_HOME, 'logs'), { recursive: true }).then(() => undefined)
+  return logReady
+}
+
+/** 串行写队列：前一条落盘后才写下一条，保证同进程内顺序。 */
+let writeChain: Promise<void> = Promise.resolve()
+function enqueueLogLine(ctx: Context, line: object): void {
+  const logger = ctx.logger('auto-approval')
+  writeChain = writeChain
+    .then(async () => {
+      await ensureLogReady()
+      await appendFile(DECISION_LOG_PATH, `${JSON.stringify(line)}\n`, 'utf8')
+    })
+    .catch((error: unknown) => {
+      logger.warn(`decision log append failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+}
+
+/** 插件生命周期记录：arm（启用）时的配置摘要，第一行即可确认插件是否在跑。 */
+export function auditArmed(ctx: Context, summary: {
+  readonly deny: number
+  readonly ask: number
+  readonly autoApproveTools: number
+  readonly consecutiveDenyLimit: number
+  readonly classifier: string
+}): void {
+  enqueueLogLine(ctx, { type: 'auto-approval/armed', time: new Date().toISOString(), ...summary })
+}
+
+/**
  * 落一条审计事件。无 agent（无 session）时跳过；append 异常被吞掉并记
  * warn——审计永远不该阻断 tool 执行。
  */
 export function audit(ctx: Context, agent: AgentLike | undefined, event: AutoApprovalDecisionEvent): void {
+  enqueueLogLine(ctx, { type: 'auto-approval/decision', time: new Date().toISOString(), ...event })
   if (agent === undefined) {
     ctx.logger('auto-approval').debug(`decision (agent-less, no session): ${JSON.stringify(event)}`)
     return
