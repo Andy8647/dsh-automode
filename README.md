@@ -26,42 +26,48 @@ model → tools/pre-execute waterfall
 
 ## 方案设计
 
-### 三层 classifier 架构
+设计对齐 Claude Code automode 的"意图对齐"思路：classifier 判断**这个动作是否符合用户意图**（而不是单纯看命令危不危险），并借鉴其两阶段判定与防注入原则。同时保留 dsh 的确定性硬底线（L0 规则）与 fail-closed 传统。
 
-安全决策不全部交给单一机制：规则引擎兜住"显然危险"的硬底线（确定性、零延迟、可审计），LLM 只负责模糊地带，人工是最终兜底。
+### 三层 classifier 架构
 
 | 层 | 职责 | 成本 | 默认 |
 |---|---|---|---|
-| **L0 规则引擎** | deny 黑名单（`rm -rf /`、`curl\|sh` 等）——显然危险的操作**永不**交给模型裁决；allow 白名单（只读工具）直接放行 | 零，确定性 | ✅ 开 |
-| **L1 LLM classifier** | 模糊地带："这个 `npm install` 到底装了什么"、奇怪的 `git push`——把调用信息喂给模型，输出三态 JSON | 每次判定一次模型调用 | ⚪ 关（配置模型后启用） |
+| **L0 规则引擎（硬规则）** | deny/ask 黑名单——确定性底线，永不交给模型裁决；allow 白名单（只读工具）直接放行 | 零，确定性 | ✅ 开 |
+| **L1 LLM classifier（意图对齐）** | 模糊地带：把用户消息 + 本次 tool call 喂给模型，判断动作是否在用户意图范围内 | 每次判定一次模型调用 | ⚪ 关（配置模型后启用） |
 | **L2 人工兜底** | `ask` 转 `ctx.approval` 问用户 | — | 常备 |
 
-决策优先级：**deny > ask > allow**。L0 命中的 deny 不经过 L1；L1 判定失败时 fail-closed 转 `ask`，绝不默认放行。
+决策优先级：**L0 deny > L1 判定 > L2 人工**。L0 命中的 deny 不经过 L1；L1 判定失败时 fail-closed 转 `ask`，绝不默认放行。
 
 ```
-tool call ──→ L0 规则引擎
+tool call ──→ L0 规则引擎（硬规则）
               ├─ deny    → 直接拒绝（Error: <reason>）
               ├─ 白名单 → allow（next() 放行）
               └─ 未命中 ──→ L1 LLM classifier（未启用则直接 allow）
-                            ├─ deny → 拒绝
+                            ├─ deny → 拒绝（reason 回给模型，可自行调整）
                             ├─ ask  → L2 ctx.approval 问用户
                             ├─ allow → 放行
                             └─ 超时/解析失败 → fail-closed 转 ask
 ```
 
+### L1 LLM classifier 设计（对齐 CC automode，规划中）
+
+- **输入范围（防注入关键）**：只看**用户消息 + 当前 tool call**（工具名 + 参数）。**不看** assistant 的推理、回复和所有 tool 结果——恶意指令大多从 tool 输出进入上下文，排除它们就是最有效的防 prompt injection 手段。dsh 的 `tools/pre-execute` 接缝天然只提供这些信息，零额外工程
+- **两阶段判定（省 token）**：Stage 1 fast 单 token 过滤（`0`=allow / `1`=审查）；只有 flagged 的调用才进 Stage 2 chain-of-thought 深查。fast 与 deep 阶段可分别配置模型（`ctx.llm` 指定任意已注册模型，如 fast 用轻量模型）
+- **用户规则 = classifier 的 guidance，不是硬规则**：用户配置的 allow / soft-deny / hard-deny 规则作为输入参与判断，但 classifier 始终能看到每个调用（避免规则绕过 classifier）；硬限制仍走 L0 deny 规则
+- **`ask-user` 类工具的返回不算授权**：用户在交互工具里点了"是"只帮助 agent 决策，不视为对后续动作的显式授权——显式授权必须走正常聊天消息
+- **fail-closed**：超时、输出解析失败、模型不可用 → 一律转 `ask`（宁可问人，不默认放行）
+- **deny 后让 agent 自行调整**：拒绝返回通用文案 + 原因给模型，模型可换更安全的方式重试（如 force push 被拒 → 改推新分支）
+- **审计**：每次判定（allow/deny/ask + 理由 + 命中的规则）落 session 事件流，可回放
+
+### 防失控：连续拒绝转人工（替代 per-turn 限额）
+
+早期设计有过"单轮自动放行上限"的构想，调研后确认 Claude Code / Codex / pi-automode 均无此设计——计数限额是伪需求（turn 语义模糊、实现复杂、用户感知差）。可靠的防失控机制是：**连续 N 次被拒/转人工后，暂停自动放行并强制用户介入**（对齐 CC 的"持续被拒 → 暂停转人工"）。默认 N=3。
+
 ### 为什么不全交给 LLM
 
-- **延迟**：每个 tool call 等一次模型往返会拖慢 agent 主循环；L0 是免费的
+- **延迟**：每个 tool call 等一次模型往返会拖慢 agent 主循环；L0 是免费的，Stage 1 的单 token 过滤也很便宜
 - **可靠性**：模型判定存在误判，安全边界上 fail-open 不可接受；L0 的确定性规则是安全底线
-- **成本**：只对模糊地带花模型钱，而不是每个调用都花
-
-### L1 LLM classifier 设计（规划中）
-
-- **可配置模型**：`classifierModel` 指定任意已注册模型 id（profile 里配了哪些 provider 就能用哪些），走 `ctx.llm`，用户可自选 fast/cheap 模型
-- **判定预算**：单次判定 2s 超时；超时或输出解析失败 → fail-closed 转 `ask`（宁可问人，不默认放行）
-- **输出约束**：模型只返回 `{"decision":"allow|deny|ask","reason":"..."}` 单行 JSON，解析失败即 fail-closed
-- **缓存节流**：同一命令的判定结果缓存，避免重复调用刷模型
-- **审计**：每次判定（allow/deny/ask + 理由）落 session 事件流，可回放
+- **成本**：只对模糊地带花模型钱，且只在 Stage 1 flagged 时才花 Stage 2 的推理 token
 
 ## 安装
 
@@ -85,18 +91,18 @@ auto-approval:
     - read
     - grep
     - find
-  maxAutoApprovePerTurn: 20
+  consecutiveDenyLimit: 3
 ```
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|
 | `enabled` | `true` | 总开关，false 时完全旁路 |
-| `denyPatterns` | 见 `src/index.ts` | 正则，命中 command 即 `deny`（优先级最高） |
+| `denyPatterns` | 见 `src/index.ts` | 正则，命中 command 即 `deny`（硬规则，优先级最高） |
 | `askPatterns` | 见 `src/index.ts` | 正则，命中 command 即 `ask` 转人工 |
 | `autoApproveTools` | 只读工具列表 | tool name 白名单，直接放行 |
-| `maxAutoApprovePerTurn` | `20` | 单 turn 自动放行上限，超出一律 `ask` |
-| `classifierModel` | 未设置 | 规划中：L1 LLM classifier 使用的模型 id，设置后启用 L1 |
-| `classifierTimeoutMs` | `2000` | 规划中：L1 单次判定超时，超时 fail-closed 转 `ask` |
+| `consecutiveDenyLimit` | `3` | 连续被拒/转人工 N 次后暂停自动放行，强制用户介入（防失控） |
+| `classifierFastModel` | 未设置 | 规划中：L1 Stage 1 fast 过滤用模型，设置后启用 L1 |
+| `classifierDeepModel` | 未设置 | 规划中：L1 Stage 2 深查用模型，默认与 fast 相同 |
 
 ## 开发
 

@@ -25,18 +25,18 @@ import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 
 export const name = 'auto-approval'
 
-/** 插件配置。 */
+/** 插件配置（全部可选，schemastery schema 提供默认值——上游惯例）。 */
 export interface Config {
   /** 总开关：false 时完全旁路（瀑布 fallback 为 allow）。 */
-  enabled: boolean
-  /** 命中即 deny 的正则列表（匹配 bash command 全文，区分大小写）。 */
-  denyPatterns: string[]
+  enabled?: boolean
+  /** 命中即 deny 的正则列表（硬规则，匹配 bash command 全文，区分大小写）。 */
+  denyPatterns?: string[]
   /** 命中即 ask（转人工审批）的正则列表。 */
-  askPatterns: string[]
+  askPatterns?: string[]
   /** 直接放行的 tool name 白名单（如 read、grep、ls 类只读工具）。 */
-  autoApproveTools: string[]
-  /** 单 turn 内自动放行的最大次数，超出后一律 ask（防失控）。 */
-  maxAutoApprovePerTurn: number
+  autoApproveTools?: string[]
+  /** 连续被拒/转人工 N 次后暂停自动放行，强制用户介入（防失控，替代 per-turn 限额）。 */
+  consecutiveDenyLimit?: number
 }
 
 /** Runtime configuration schema (schemastery fills defaults before construction). */
@@ -69,11 +69,11 @@ export const Config: z<Config> = z.object({
   autoApproveTools: z.array(z.string()).default([
     'read', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
   ]),
-  maxAutoApprovePerTurn: z.number().default(20),
+  consecutiveDenyLimit: z.number().default(3),
 })
 
-/** 每 agent 的自动放行计数（按 turn 重置 —— 简化版先按 agent 累计，TODO 挂 turn 事件重置）。 */
-const autoApproveCounts = new WeakMap<object, number>()
+/** 每 agent 的连续拒绝计数（达到 consecutiveDenyLimit 后暂停自动放行；TODO 挂 agent 事件在 turn 边界重置）。 */
+const consecutiveDenyCounts = new WeakMap<object, number>()
 
 function matchesAny(command: string, patterns: string[]): string | undefined {
   for (const pat of patterns) {
@@ -92,12 +92,12 @@ function matchesAny(command: string, patterns: string[]): string | undefined {
  * 即白名单工具若命令命中 deny 模式依然拒绝，宁可严格）。
  */
 function classify(exec: ToolExecution, config: Config): PreToolDecision {
-  // bash / run_code 等携带命令字符串的工具：对 command 做规则匹配
-  const command = exec.name === 'bash' || exec.name === 'run_code'
-    ? String(exec.arguments?.command ?? '')
-    : undefined
+  // bash 等携带命令字符串的工具：对 command 做规则匹配（ToolExecution.arguments 是
+  // unknown，需要显式收窄；run_code 的参数是 code，独立分支见 TODO）
+  const args = exec.arguments as { command?: unknown } | undefined
+  const command = typeof args?.command === 'string' ? args.command : ''
 
-  if (command !== undefined && command.length > 0) {
+  if (command.length > 0) {
     const denied = matchesAny(command, config.denyPatterns)
     if (denied !== undefined) {
       return { kind: 'deny', reason: `auto-approval: command matches deny pattern /${denied}/` }
@@ -118,6 +118,7 @@ function classify(exec: ToolExecution, config: Config): PreToolDecision {
  * 插件入口：挂载 `tools/pre-execute` 瀑布，prepend 保证跑在其它 listener 之前。
  */
 export function apply(ctx: Context, config: Config = {}): void {
+  // schemastery 用 schema 默认值填充缺省字段（上游惯例：apply 签名无默认值，schema 负责）
   const resolved = Config(config)
 
   ctx.on('tools/pre-execute', (exec, next) => {
