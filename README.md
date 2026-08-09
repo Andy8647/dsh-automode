@@ -76,11 +76,61 @@ tool call ──→ L0 规则引擎（硬规则）
 - **可靠性**：模型判定存在误判，安全边界上 fail-open 不可接受；L0 的确定性规则是安全底线
 - **成本**：只对模糊地带花模型钱，且只在 Stage 1 flagged 时才花 Stage 2 的推理 token
 
-## 安装
+# Install
+
+**前置**：已装 dsh（内测版）。插件通过 dsh 的 profile 系统安装，不碰 dsh 本体。
+
+插件**未发布 npm**（内测期），仓库已提交构建产物（`lib/`），**clone 后直接可用，无需自己构建**。运行时依赖（`@deepseek-ai/*`）由 dsh 本体提供，只需 `schemastery` 一个 npm 包（安装时自动处理）。
+
+## 方式 A：直接安装（推荐，无需构建）
 
 ```sh
-dsh plugin --profile <name> add @deepseek-ai/dsh-auto-approval
+# 1. clone（私有仓库，需 dsh-external org 成员）
+gh repo clone dsh-external/dsh-auto-approval
+
+# 2. 装到你的 profile（用已有可用的 profile，如 web；<你的clone路径> 换成实际位置）
+#    ⚠️ 避免新建 profile：新 profile 默认只有 base 层，没有 UI，启动会静默挂起
+dsh plugin --profile web add link:/<你的clone路径>/dsh-auto-approval
+
+# 3. 重启 dsh
 ```
+
+## 方式 B：源码构建（开发/改代码）
+
+构建需要 dsh monorepo 的构建产物（`@deepseek-ai/*` 包未发布 npm，`devDependencies` 用 `file:` 指向 monorepo）：
+
+```sh
+# 1. clone dsh monorepo 并构建
+gh repo clone dsh2026/test-Andy8647
+cd test-Andy8647 && pnpm install && pnpm run build
+
+# 2. 把插件的 devDependencies 里 file: 路径指到你的 monorepo
+#    （默认 ../../test-Andy8647/packages/...，按你的 clone 位置改）
+cd <你的clone路径>/dsh-auto-approval
+pnpm install && pnpm run build
+
+# 3. 同方式 A 安装 + 重启
+```
+
+## 配置
+
+所有配置走 `$DSH_HOME/settings.yaml`（默认 `~/.dsh/settings.yaml`；`DSH_HOME` 环境变量可改位置）。加一个 `auto-approval:` section：
+
+```yaml
+auto-approval:
+  enabled: true
+  denyPatterns:
+    - 'rm\s+(-[a-z]*[fr][a-z]*\s+)*/\s*$'
+  # 其余字段见下方「配置」表
+```
+
+配置**热重载**（watch 文件），改完即生效，无需重启。
+
+## 验证是否装好
+
+1. 重启后 `$DSH_HOME/logs/auto-approval.log` 首行应有 `auto-approval/armed`（含规则数、L1 状态）——没有这行就是插件没加载
+2. 让模型跑 `echo danger_test`（需先配同名的 deny 规则），应被拒绝，日志出现 `L0-deny`
+3. 或直接查会话审计：`zstd -dc <session.jsonl.zstd> | rg auto-approval`
 
 ## 配置
 
