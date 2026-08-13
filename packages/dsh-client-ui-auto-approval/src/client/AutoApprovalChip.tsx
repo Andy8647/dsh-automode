@@ -14,13 +14,13 @@
  * Theming: every color resolves through `--dsw-alias-*` semantic tokens
  * (`--dsw-static-*` only where no alias exists), which `ui-theme` redefines
  * under `body[data-ds-dark-theme]` — dark/light switching is automatic.
- * Official components (Pill / Tooltip / Modal / Button) ride the platform
+ * Official components (Pill / Tooltip / Modal) ride the platform
  * module table, so no CSS-module pipeline is needed here; locally composed
  * parts (stat tiles, table, dot) use inline styles over the same tokens.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Button, Modal, Pill, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal, Pill, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the ui-conversation SlotMap merge (the input.left seat + SessionStandardProps).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -55,13 +55,17 @@ const BG_LAYER_3 = 'var(--dsw-alias-bg-layer-3)'
 const MONO_FONT = 'var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)'
 
 /**
- * Width override for the official Modal: the figma dialog is min(380px, 100%),
- * which cramps the toggle row (the "Turn off" label wraps) and truncates the
- * decision table. We keep every official behavior (mask, blur, Escape, portal,
- * aria) and only widen the card via a class injected below — no !important on
- * layout-critical properties, just the dialog width.
+ * Width/space overrides for the official Modal: the figma dialog is
+ * min(380px, 100%) wide (cramps the toggle row and truncates the decision
+ * table) and the official body carries a 20px top margin (extra whitespace
+ * under the title). We keep every official behavior (mask, blur, Escape,
+ * portal, aria) and only adjust chrome via classes injected below — no
+ * !important on layout-critical properties beyond these two overrides.
  */
-const DIALOG_WIDTH_CSS = '.aa-modal-wide { width: min(660px, 100%) !important; }'
+const DIALOG_WIDTH_CSS = `
+.aa-modal-wide { width: min(660px, 100%) !important; }
+.aa-modal-flush > *:last-child { margin-top: 0 !important; }
+`
 
 /* ------------------------------------------------------------------ */
 /* Text helpers                                                        */
@@ -83,8 +87,8 @@ function describe(status: AutoApprovalStatus): string {
   const counts = countLine(status)
   if (!status.enabled) return `auto-approval off — ${counts}`
   const parts = [
-    `L0 ${status.denyPatterns + status.askPatterns} rules`,
-    status.classifier === 'disabled' ? 'L1 off' : `L1 ${shortModel(status.classifier)}`,
+    `${status.denyPatterns + status.askPatterns} rules`,
+    status.classifier === 'disabled' ? 'no review model' : `model ${shortModel(status.classifier)}`,
     counts,
   ]
   if (status.paused) parts.push('paused')
@@ -176,12 +180,12 @@ function StatTile({ label, value, color }: { label: string; value: number; color
 /* Config summary (dialog)                                             */
 /* ------------------------------------------------------------------ */
 
-/** Formatted armed-config rows: label + value on their own line. */
+/** Formatted armed-config rows: plain-language labels, no internal jargon. */
 function ConfigSummary({ status }: { status: AutoApprovalStatus }): ReactNode {
   const rows: Array<[string, string]> = [
-    ['L0 rules', `${status.denyPatterns + status.askPatterns} (${status.denyPatterns} deny + ${status.askPatterns} legacy ask)`],
-    ['L1 route', status.classifier === 'disabled' ? 'off' : status.classifier],
-    ['Auto-approve', `${status.autoApproveTools} tools`],
+    ['Safety rules', `${status.denyPatterns + status.askPatterns}`],
+    ['Review model', status.classifier === 'disabled' ? 'off' : shortModel(status.classifier)],
+    ['Trusted tools', `${status.autoApproveTools}`],
   ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 12 }}>
@@ -192,6 +196,75 @@ function ConfigSummary({ status }: { status: AutoApprovalStatus }): ReactNode {
         </div>
       ))}
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Switch + status tag                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Minimal switch (track + thumb), styled with the official alias tokens. */
+function Switch({ checked, disabled, onChange, label }: {
+  checked: boolean
+  disabled?: boolean
+  onChange: () => void
+  label: string
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      style={{
+        position: 'relative',
+        width: 40,
+        height: 22,
+        flexShrink: 0,
+        borderRadius: 11,
+        border: 'none',
+        padding: 0,
+        cursor: disabled ? 'default' : 'pointer',
+        background: checked ? SUCCESS : BORDER_L2,
+        opacity: disabled ? 0.6 : 1,
+        transition: 'background 150ms',
+      }}
+    >
+      <span style={{
+        position: 'absolute',
+        top: 3,
+        left: checked ? 21 : 3,
+        width: 16,
+        height: 16,
+        borderRadius: '50%',
+        background: 'var(--dsw-alias-label-primary)',
+        transition: 'left 150ms',
+      }} />
+    </button>
+  )
+}
+
+/** Status tag in the official plugin-list configTag style. */
+function StatusTag({ enabled }: { enabled: boolean }): ReactNode {
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      minHeight: 20,
+      borderRadius: 5,
+      padding: '1px 6px',
+      background: enabled
+        ? 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent)'
+        : 'var(--dsw-alias-bg-layer-1)',
+      color: enabled ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-label-secondary)',
+      fontSize: 11,
+      lineHeight: '16px',
+      whiteSpace: 'nowrap',
+    }}>
+      {enabled ? 'Enabled' : 'Disabled'}
+    </span>
   )
 }
 
@@ -213,24 +286,21 @@ function DialogContent({
       {/* Toggle row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, lineHeight: '22px', fontWeight: 600, color: LABEL_PRIMARY }}>
-            {status.enabled ? 'Enabled' : 'Disabled'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <StatusTag enabled={status.enabled} />
           </div>
-          <div style={{ fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }}>
+          <div style={{ fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY, marginTop: 6 }}>
             {status.enabled
-              ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
-              : 'All calls fall through to the normal approval flow.'}
+              ? 'Safe calls run automatically; dangerous ones are blocked.'
+              : 'All calls go through the normal approval flow.'}
           </div>
         </div>
-        <Button
-          variant={status.enabled ? 'outline' : 'primary'}
-          size="sm"
+        <Switch
+          checked={status.enabled}
           disabled={toggling}
-          onClick={onToggle}
-          style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-        >
-          {status.enabled ? 'Turn off' : 'Turn on'}
-        </Button>
+          onChange={onToggle}
+          label={status.enabled ? 'Turn off auto-approval' : 'Turn on auto-approval'}
+        />
       </div>
 
       {/* Config summary */}
@@ -428,6 +498,7 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
         onClose={() => setDialogOpen(false)}
         title="Auto-approval"
         className="aa-modal-wide"
+        contentClassName="aa-modal-flush"
       >
         {state.kind === 'status'
           ? (

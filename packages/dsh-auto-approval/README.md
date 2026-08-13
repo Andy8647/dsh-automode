@@ -60,7 +60,7 @@ auto-approval:
 | `enabled` | `true` | 总开关 |
 | `denyPatterns` | 见 `src/config.ts` | 正则，命中即 deny（硬规则） |
 | `askPatterns` | 见 `src/config.ts` | 正则，命中即 **deny**（原转人工，全托管直接拒绝；字段保留兼容旧配置） |
-| `autoApproveTools` | 只读工具列表 | tool name 白名单 |
+| `autoApproveTools` | 只读工具 + 文件写入工具（`write`/`edit`/`str_replace_editor`） | tool name 白名单，命中直接放行。文件写入有独立审查（代码 review + 沙箱边界），AA 不重复检查；主要检查对象是 bash / run_code |
 | `bashCommandPrefixes` | 空 | bash 前缀白名单（`ls`/`cat` 都走 bash tool，tool 白名单豁免不了，这是只读 shell 命令免 L1 的通道） |
 | `selfKillGuard` | `true` | 自毁护栏，见上 |
 | `auditSessionEvents` | `false` | 是否写 session 事件。**保持关**：08-12 final 起 session 对未声明事件 fail-closed，开了 session 重启打不开 |

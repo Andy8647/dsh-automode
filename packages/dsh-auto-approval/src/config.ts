@@ -26,7 +26,11 @@ export interface Config {
   /** 命中即 ask 的正则列表（已删：全托管无人工，不确定的调用直接 deny）。
    *  字段保留以向后兼容旧配置，语义已并入 deny——命中即拒绝。 */
   askPatterns?: string[]
-  /** 直接放行的 tool name 白名单（如 read、grep、ls 类只读工具）。 */
+  /**
+   * 直接放行的 tool name 白名单。文件类工具（只读 + 写入）免检：写入有
+   * 独立审查（代码 review / 沙箱边界），AA 不重复检查。
+   * 主要检查对象是 bash / run_code（L0 deny + L1）。
+   */
   autoApproveTools?: string[]
   /**
    * bash 命令前缀白名单：`bash` tool 的命令以这些前缀开头且不含 shell 元字符
@@ -77,7 +81,10 @@ export const Config: z<Config> = z.object({
     'DROP\\s+TABLE',
   ]),
   autoApproveTools: z.array(z.string()).default([
-    'read', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
+    // 只读工具
+    'read', 'read_image', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
+    // 文件写入工具：写代码/改文件有独立审查（代码 review + 沙箱边界），AA 不重复检查
+    'write', 'edit', 'str_replace_editor',
   ]),
   selfKillGuard: z.boolean().default(true),
   auditSessionEvents: z.boolean().default(false),

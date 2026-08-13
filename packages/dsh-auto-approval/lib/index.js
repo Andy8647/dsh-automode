@@ -40,12 +40,16 @@ const Config = z.object({
 	]),
 	autoApproveTools: z.array(z.string()).default([
 		"read",
+		"read_image",
 		"grep",
 		"find",
 		"ls",
 		"list_files",
 		"glob",
-		"search_symbols"
+		"search_symbols",
+		"write",
+		"edit",
+		"str_replace_editor"
 	]),
 	selfKillGuard: z.boolean().default(true),
 	auditSessionEvents: z.boolean().default(false),

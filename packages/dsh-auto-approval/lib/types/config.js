@@ -31,7 +31,10 @@ export const Config = z.object({
         'DROP\\s+TABLE',
     ]),
     autoApproveTools: z.array(z.string()).default([
-        'read', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
+        // 只读工具
+        'read', 'read_image', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
+        // 文件写入工具：写代码/改文件有独立审查（代码 review + 沙箱边界），AA 不重复检查
+        'write', 'edit', 'str_replace_editor',
     ]),
     selfKillGuard: z.boolean().default(true),
     auditSessionEvents: z.boolean().default(false),

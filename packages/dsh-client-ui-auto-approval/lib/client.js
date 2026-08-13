@@ -24,7 +24,7 @@ window.__ModuleLoader__.load({
 		* Theming: every color resolves through `--dsw-alias-*` semantic tokens
 		* (`--dsw-static-*` only where no alias exists), which `ui-theme` redefines
 		* under `body[data-ds-dark-theme]` — dark/light switching is automatic.
-		* Official components (Pill / Tooltip / Modal / Button) ride the platform
+		* Official components (Pill / Tooltip / Modal) ride the platform
 		* module table, so no CSS-module pipeline is needed here; locally composed
 		* parts (stat tiles, table, dot) use inline styles over the same tokens.
 		*/
@@ -42,13 +42,17 @@ window.__ModuleLoader__.load({
 		const BG_LAYER_3 = "var(--dsw-alias-bg-layer-3)";
 		const MONO_FONT = "var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)";
 		/**
-		* Width override for the official Modal: the figma dialog is min(380px, 100%),
-		* which cramps the toggle row (the "Turn off" label wraps) and truncates the
-		* decision table. We keep every official behavior (mask, blur, Escape, portal,
-		* aria) and only widen the card via a class injected below — no !important on
-		* layout-critical properties, just the dialog width.
+		* Width/space overrides for the official Modal: the figma dialog is
+		* min(380px, 100%) wide (cramps the toggle row and truncates the decision
+		* table) and the official body carries a 20px top margin (extra whitespace
+		* under the title). We keep every official behavior (mask, blur, Escape,
+		* portal, aria) and only adjust chrome via classes injected below — no
+		* !important on layout-critical properties beyond these two overrides.
 		*/
-		const DIALOG_WIDTH_CSS = ".aa-modal-wide { width: min(660px, 100%) !important; }";
+		const DIALOG_WIDTH_CSS = `
+.aa-modal-wide { width: min(660px, 100%) !important; }
+.aa-modal-flush > *:last-child { margin-top: 0 !important; }
+`;
 		/** Cumulative counts as a compact "✓ n · ✗ n" line for the tooltip. */
 		function countLine(status) {
 			return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`;
@@ -63,8 +67,8 @@ window.__ModuleLoader__.load({
 			const counts = countLine(status);
 			if (!status.enabled) return `auto-approval off — ${counts}`;
 			const parts = [
-				`L0 ${status.denyPatterns + status.askPatterns} rules`,
-				status.classifier === "disabled" ? "L1 off" : `L1 ${shortModel(status.classifier)}`,
+				`${status.denyPatterns + status.askPatterns} rules`,
+				status.classifier === "disabled" ? "no review model" : `model ${shortModel(status.classifier)}`,
 				counts
 			];
 			if (status.paused) parts.push("paused");
@@ -190,12 +194,12 @@ window.__ModuleLoader__.load({
 				})]
 			});
 		}
-		/** Formatted armed-config rows: label + value on their own line. */
+		/** Formatted armed-config rows: plain-language labels, no internal jargon. */
 		function ConfigSummary({ status }) {
 			const rows = [
-				["L0 rules", `${status.denyPatterns + status.askPatterns} (${status.denyPatterns} deny + ${status.askPatterns} legacy ask)`],
-				["L1 route", status.classifier === "disabled" ? "off" : status.classifier],
-				["Auto-approve", `${status.autoApproveTools} tools`]
+				["Safety rules", `${status.denyPatterns + status.askPatterns}`],
+				["Review model", status.classifier === "disabled" ? "off" : shortModel(status.classifier)],
+				["Trusted tools", `${status.autoApproveTools}`]
 			];
 			return (0, react_jsx_runtime.jsx)("div", {
 				style: {
@@ -225,6 +229,58 @@ window.__ModuleLoader__.load({
 				}, label))
 			});
 		}
+		/** Minimal switch (track + thumb), styled with the official alias tokens. */
+		function Switch({ checked, disabled, onChange, label }) {
+			return (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				role: "switch",
+				"aria-checked": checked,
+				"aria-label": label,
+				disabled,
+				onClick: onChange,
+				style: {
+					position: "relative",
+					width: 40,
+					height: 22,
+					flexShrink: 0,
+					borderRadius: 11,
+					border: "none",
+					padding: 0,
+					cursor: disabled ? "default" : "pointer",
+					background: checked ? SUCCESS : BORDER_L2,
+					opacity: disabled ? .6 : 1,
+					transition: "background 150ms"
+				},
+				children: (0, react_jsx_runtime.jsx)("span", { style: {
+					position: "absolute",
+					top: 3,
+					left: checked ? 21 : 3,
+					width: 16,
+					height: 16,
+					borderRadius: "50%",
+					background: "var(--dsw-alias-label-primary)",
+					transition: "left 150ms"
+				} })
+			});
+		}
+		/** Status tag in the official plugin-list configTag style. */
+		function StatusTag({ enabled }) {
+			return (0, react_jsx_runtime.jsx)("span", {
+				style: {
+					display: "inline-flex",
+					alignItems: "center",
+					minHeight: 20,
+					borderRadius: 5,
+					padding: "1px 6px",
+					background: enabled ? "color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent)" : "var(--dsw-alias-bg-layer-1)",
+					color: enabled ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-label-secondary)",
+					fontSize: 11,
+					lineHeight: "16px",
+					whiteSpace: "nowrap"
+				},
+				children: enabled ? "Enabled" : "Disabled"
+			});
+		}
 		function DialogContent({ status, history, toggling, error, onToggle }) {
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
 				(0, react_jsx_runtime.jsxs)("div", {
@@ -238,30 +294,25 @@ window.__ModuleLoader__.load({
 						style: { minWidth: 0 },
 						children: [(0, react_jsx_runtime.jsx)("div", {
 							style: {
-								fontSize: 14,
-								lineHeight: "22px",
-								fontWeight: 600,
-								color: LABEL_PRIMARY
+								display: "flex",
+								alignItems: "center",
+								gap: 8
 							},
-							children: status.enabled ? "Enabled" : "Disabled"
+							children: (0, react_jsx_runtime.jsx)(StatusTag, { enabled: status.enabled })
 						}), (0, react_jsx_runtime.jsx)("div", {
 							style: {
 								fontSize: 12,
 								lineHeight: "18px",
-								color: LABEL_SECONDARY
+								color: LABEL_SECONDARY,
+								marginTop: 6
 							},
-							children: status.enabled ? "Matching calls are auto-approved (L0 rules still hard-deny)." : "All calls fall through to the normal approval flow."
+							children: status.enabled ? "Safe calls run automatically; dangerous ones are blocked." : "All calls go through the normal approval flow."
 						})]
-					}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
-						variant: status.enabled ? "outline" : "primary",
-						size: "sm",
+					}), (0, react_jsx_runtime.jsx)(Switch, {
+						checked: status.enabled,
 						disabled: toggling,
-						onClick: onToggle,
-						style: {
-							flexShrink: 0,
-							whiteSpace: "nowrap"
-						},
-						children: status.enabled ? "Turn off" : "Turn on"
+						onChange: onToggle,
+						label: status.enabled ? "Turn off auto-approval" : "Turn on auto-approval"
 					})]
 				}),
 				(0, react_jsx_runtime.jsx)(ConfigSummary, { status }),
@@ -500,6 +551,7 @@ window.__ModuleLoader__.load({
 					onClose: () => setDialogOpen(false),
 					title: "Auto-approval",
 					className: "aa-modal-wide",
+					contentClassName: "aa-modal-flush",
 					children: state.kind === "status" ? (0, react_jsx_runtime.jsx)(DialogContent, {
 						status: state.status,
 						history,
