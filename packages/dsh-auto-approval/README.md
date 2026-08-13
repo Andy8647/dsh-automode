@@ -25,7 +25,7 @@ DSH 权限自动审批插件：给 approval policy 加第三档 `auto`，classif
 
 ```sh
 # 1. clone
-gh repo clone dsh-external/dsh-auto-approval
+gh repo clone Andy8647/dsh-auto-approval
 
 # 2. 装到已有可用的 profile（⚠️ 别新建 profile：默认只有 base 层、无 UI，会静默挂起）
 dsh plugin --profile web add link:/<你的clone路径>/dsh-auto-approval/packages/dsh-auto-approval
@@ -83,7 +83,7 @@ tail -f ~/.dsh/logs/auto-approval.log
 
 ## 已知限制
 
-- **Web UI 设置页无 section**：host api-proxy 的 `exposedNamespaces()` 是硬编码白名单，第三方 settings namespace 默认不暴露。配置走 `settings.yaml`（热重载）。已在 dsh-external/issues 提 issue（#485，已并入 #349）。
+- **Web UI 设置页无 section**：host api-proxy 的 `exposedNamespaces()` 是硬编码白名单，第三方 settings namespace 默认不暴露。配置走 `settings.yaml`（热重载）。已向社区 issue 仓库提交（#485，已并入 #349）。
 - **settings.yaml 的 section 整体替换**（数组不合并），覆盖某字段需完整列出。
 
 ## 开发
@@ -96,7 +96,7 @@ pnpm run test         # vitest
 pnpm run build        # tsc → tsdown
 ```
 
-依赖已从 npm 私有 registry 安装（rc.5 系），不再需要 `file:` 链接 monorepo 构建产物。
+依赖从 npm 安装（rc.5 系；`@deepseek-ai/*` 运行时依赖由 dsh 本体提供，若 npm 侧仍为私有包需配置 `NPM_TOKEN`）。
 
 ## License
 

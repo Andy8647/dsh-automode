@@ -20,7 +20,7 @@ DSH 权限自动审批插件 —— 给 approval policy 加第三档 `auto`，cl
 两个包都装到同一个 profile：
 
 ```sh
-gh repo clone dsh-external/dsh-auto-approval
+gh repo clone Andy8647/dsh-auto-approval
 
 # host 半
 dsh plugin --profile web add link:/<你的clone路径>/dsh-auto-approval/packages/dsh-auto-approval
