@@ -28,6 +28,8 @@ import type { LlmLike } from './classifier.ts'
 import { ASK_REASON, createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchBashPrefix, matchFirst, matchSelfKill, selfKillDenyReason } from './rules.ts'
 import { audit, auditArmed } from './audit.ts'
 import type { AutoApprovalDecisionEvent, DecisionStage } from './audit.ts'
+import { AutoApprovalStatusService } from './remote.ts'
+import type { StatusReader } from './remote.ts'
 import { DenialTracker } from './tracker.ts'
 
 export const name = 'auto-approval'
@@ -96,6 +98,21 @@ export function apply(ctx: Context, config: Config = {}): void {
    * 白名单 + append() 无 ignorable 通道），写 session 事件会使该 session 重启后无法打开。 */
   const auditDecision = (ctx: Context, agent: Agent | undefined, event: AutoApprovalDecisionEvent): void =>
     audit(ctx, agent, event, resolved.auditSessionEvents ?? false)
+
+  /** remote 状态读取：读 resolved 配置摘要 + tracker 的 per-agent 运行态，不落 session 事件。 */
+  const readStatus: StatusReader = (agent) => ({
+    enabled: resolved.enabled,
+    denyPatterns: resolved.deny.length,
+    askPatterns: resolved.ask.length,
+    autoApproveTools: resolved.autoApproveTools.size,
+    classifier: resolved.classifier === undefined
+      ? 'disabled'
+      : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
+    denials: tracker.denials(agent),
+    paused: tracker.isPaused(agent),
+  })
+  // 注册 remote 服务：Cordis Service 构造器自 provide，并绑定 Typert Gateway。
+  new AutoApprovalStatusService(ctx, readStatus)
 
   const arm = (): void => {
     logger.info(

@@ -64,6 +64,12 @@ export class DenialTracker {
     return this.sync(agent).denials >= this.limit
   }
 
+  /** 该 agent 当前 turn 内累计被 deny 的次数（无 agent 返回 0）。 */
+  denials(agent: AgentLike | undefined): number {
+    if (agent === undefined) return 0
+    return this.sync(agent).denials
+  }
+
   /** 记录一次本插件发出的 deny。无 agent 的调用不计数。 */
   recordDenial(agent: AgentLike | undefined): void {
     if (agent === undefined) return

@@ -38,6 +38,7 @@
     "@deepseek-ai/dsh-settings": "^0.0.1",
     "@deepseek-ai/dsh-timeout": "^0.0.1",
     "@deepseek-ai/dsh-tools": "^0.0.1",
+    "@deepseek-ai/dsh-typert-protocol": "^0.0.1",
     "cordis": "^4.0.0-rc.7"
   },
   "dependencies": {
@@ -50,6 +51,7 @@
     "@deepseek-ai/dsh-settings": "file:../../test-Andy8647/packages/settings/settings",
     "@deepseek-ai/dsh-timeout": "file:../../test-Andy8647/packages/util/timeout",
     "@deepseek-ai/dsh-tools": "file:../../test-Andy8647/packages/core/tools",
+    "@deepseek-ai/dsh-typert-protocol": "file:../../test-Andy8647/packages/typert/protocol",
     "@types/node": "^26.1.2",
     "cordis": "^4.0.0-rc.7",
     "tsdown": "^0.22.14",
