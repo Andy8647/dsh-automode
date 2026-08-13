@@ -15,7 +15,7 @@ function fakeAgent(): Agent {
 function event(overrides: Partial<{
   tool: string
   stage: 'L0-deny' | 'L0-ask' | 'whitelist' | 'default-allow'
-  decision: 'allow' | 'deny' | 'ask'
+  decision: 'allow' | 'deny'
   pattern: string
   detail: string
 }> = {}) {
@@ -33,7 +33,7 @@ describe('DecisionHistory', () => {
     const h = new DecisionHistory()
     h.record(undefined, event())
     expect(h.records(undefined)).toEqual([])
-    expect(h.counts(undefined)).toEqual({ approvals: 0, denials: 0, asks: 0 })
+    expect(h.counts(undefined)).toEqual({ approvals: 0, denials: 0 })
   })
 
   it('记录按 agent 隔离', () => {
@@ -42,8 +42,8 @@ describe('DecisionHistory', () => {
     const b = fakeAgent()
     h.record(a, event({ decision: 'deny' }))
     h.record(b, event({ decision: 'allow', stage: 'whitelist' }))
-    expect(h.counts(a)).toEqual({ approvals: 0, denials: 1, asks: 0 })
-    expect(h.counts(b)).toEqual({ approvals: 1, denials: 0, asks: 0 })
+    expect(h.counts(a)).toEqual({ approvals: 0, denials: 1 })
+    expect(h.counts(b)).toEqual({ approvals: 1, denials: 0 })
     expect(h.records(a)).toHaveLength(1)
     expect(h.records(b)).toHaveLength(1)
   })
@@ -52,12 +52,12 @@ describe('DecisionHistory', () => {
     const h = new DecisionHistory(2)
     const a = fakeAgent()
     h.record(a, event({ decision: 'allow', stage: 'whitelist' }))
-    h.record(a, event({ decision: 'ask', stage: 'L0-ask' }))
+    h.record(a, event({ decision: 'deny', stage: 'L0-ask' }))
     h.record(a, event({ decision: 'deny' }))
     expect(h.records(a)).toHaveLength(2)
     expect(h.records(a)[0]).toMatchObject({ decision: 'deny' })
-    expect(h.records(a)[1]).toMatchObject({ decision: 'ask' })
-    expect(h.counts(a)).toEqual({ approvals: 1, denials: 1, asks: 1 })
+    expect(h.records(a)[1]).toMatchObject({ decision: 'deny' })
+    expect(h.counts(a)).toEqual({ approvals: 1, denials: 2 })
   })
 
   it('记录带 ISO 时间和可选字段', () => {

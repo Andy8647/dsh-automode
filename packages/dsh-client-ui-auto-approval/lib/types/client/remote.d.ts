@@ -10,7 +10,6 @@ export interface AutoApprovalStatus {
     readonly denials: number;
     readonly paused: boolean;
     readonly approvals: number;
-    readonly asks: number;
     readonly totalDenials: number;
 }
 /** Wire record of one auto-approval decision (mirror of host `DecisionRecord`). */
@@ -18,7 +17,7 @@ export interface DecisionRecord {
     readonly time: string;
     readonly tool: string;
     readonly stage: string;
-    readonly decision: 'allow' | 'deny' | 'ask';
+    readonly decision: 'allow' | 'deny';
     readonly pattern?: string;
     readonly detail?: string;
 }

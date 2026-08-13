@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
 		* Clicking the chip opens the official Modal showing:
 		* - the on/off toggle (drives the host `setEnabled` remote, persisted via
 		*   settings when available);
-		* - cumulative counts (approved / denied / asked);
+		* - cumulative counts (approved / denied);
 		* - the recent decisions table (time, tool, stage, verdict, matched
 		*   pattern / rationale).
 		*
@@ -49,14 +49,14 @@ window.__ModuleLoader__.load({
 		* layout-critical properties, just the dialog width.
 		*/
 		const DIALOG_WIDTH_CSS = ".aa-modal-wide { width: min(660px, 100%) !important; }";
-		/** Cumulative counts as a compact "✓ n · ✗ n · ? n" line for the tooltip. */
+		/** Cumulative counts as a compact "✓ n · ✗ n" line for the tooltip. */
 		function countLine(status) {
-			return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied · ? ${status.asks} asked`;
+			return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`;
 		}
 		/** Armed-config summary (no counts; the dialog shows those as tiles). */
 		function summaryLine(status) {
 			return [
-				`L0: ${status.denyPatterns} deny / ${status.askPatterns} ask patterns`,
+				`L0: ${status.denyPatterns} deny (+${status.askPatterns} legacy ask) patterns`,
 				`${status.autoApproveTools} auto-approve tools`,
 				status.classifier === "disabled" ? "L1 off" : `L1 ${status.classifier}`
 			].join(" · ");
@@ -85,11 +85,11 @@ window.__ModuleLoader__.load({
 			top: 0,
 			background: BG_LAYER_2
 		};
-		/** Verdict label: colored by the official state-token triad. */
+		/** Verdict label: colored by the official state-token pair (allow/deny only). */
 		function VerdictBadge({ decision }) {
 			return (0, react_jsx_runtime.jsx)("span", {
 				style: {
-					color: decision === "allow" ? SUCCESS : decision === "deny" ? ERROR : WARN,
+					color: decision === "allow" ? SUCCESS : ERROR,
 					fontWeight: 600,
 					whiteSpace: "nowrap"
 				},
@@ -235,7 +235,7 @@ window.__ModuleLoader__.load({
 						lineHeight: "18px",
 						color: WARN
 					},
-					children: "Paused: deny limit reached this turn — calls require manual approval."
+					children: "Paused: deny limit reached this turn — calls are denied until the next turn."
 				}),
 				(0, react_jsx_runtime.jsxs)("div", {
 					style: {
@@ -243,23 +243,15 @@ window.__ModuleLoader__.load({
 						gap: 8,
 						marginTop: 16
 					},
-					children: [
-						(0, react_jsx_runtime.jsx)(StatTile, {
-							label: "Approved",
-							value: status.approvals,
-							color: SUCCESS
-						}),
-						(0, react_jsx_runtime.jsx)(StatTile, {
-							label: "Denied",
-							value: status.totalDenials,
-							color: ERROR
-						}),
-						(0, react_jsx_runtime.jsx)(StatTile, {
-							label: "Asked",
-							value: status.asks,
-							color: WARN
-						})
-					]
+					children: [(0, react_jsx_runtime.jsx)(StatTile, {
+						label: "Approved",
+						value: status.approvals,
+						color: SUCCESS
+					}), (0, react_jsx_runtime.jsx)(StatTile, {
+						label: "Denied",
+						value: status.totalDenials,
+						color: ERROR
+					})]
 				}),
 				(0, react_jsx_runtime.jsxs)("div", {
 					style: {
@@ -4515,7 +4507,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			denials: number().readonly(),
 			paused: boolean().readonly(),
 			approvals: number().readonly(),
-			asks: number().readonly(),
 			totalDenials: number().readonly()
 		});
 		/** zod schema validating the host's `DecisionRecord` array at the wire boundary. */
@@ -4523,11 +4514,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			time: string().readonly(),
 			tool: string().readonly(),
 			stage: string().readonly(),
-			decision: _enum([
-				"allow",
-				"deny",
-				"ask"
-			]).readonly(),
+			decision: _enum(["allow", "deny"]).readonly(),
 			pattern: string().readonly().optional(),
 			detail: string().readonly().optional()
 		});

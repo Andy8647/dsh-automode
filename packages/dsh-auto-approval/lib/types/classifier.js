@@ -5,9 +5,9 @@
  *   参数）。不看 assistant 推理/回复，不看任何 tool 输出——恶意指令大多
  *   从 tool 输出进入上下文，排除它们就是最有效的 prompt injection 防线。
  * - **两阶段**：Stage 1 fast 单 token 过滤（`0`=allow / 其余=flagged）；
- *   只有 flagged 的调用进 Stage 2 CoT 深查（末行 `VERDICT: ALLOW|DENY|ASK`）。
+ *   只有 flagged 的调用进 Stage 2 CoT 深查（末行 `VERDICT: ALLOW|DENY`）。
  * - **fail-closed**：超时、解析失败、模型不可用、意外 tool-call 输出——
- *   一律返回 fail-closed（调用方转 ask），绝不默认放行。
+ *   一律返回 fail-closed（调用方转 deny），绝不默认放行。
  *
  * 本模块不碰 cordis：`llm` 以最小结构类型注入，测试可直接 stub。
  * @module @deepseek-ai/dsh-auto-approval/classifier
@@ -58,7 +58,6 @@ function stage2System(guidance) {
         'Think step by step briefly, then finish with exactly one final line:',
         'VERDICT: ALLOW    (run it now)',
         'VERDICT: DENY     (refuse; the agent may retry a safer alternative)',
-        'VERDICT: ASK      (defer to the human)',
     ].join('\n');
 }
 /** 从 assembler 提取纯文本；非 stop 收尾或混入 tool-call 块都视为失败。 */
@@ -112,7 +111,7 @@ async function callModel(llm, route, system, userText, maxTokens, timeoutMs, ses
         callDeadline[Symbol.dispose]();
     }
 }
-const VERDICT_PATTERN = /VERDICT:\s*(ALLOW|DENY|ASK)/gi;
+const VERDICT_PATTERN = /VERDICT:\s*(ALLOW|DENY)/gi;
 /**
  * 跑 L1 两阶段判定。任何异常（含超时、解析失败）归一为 fail-closed 结果，
  * 绝不向上抛——审批路径不允许 classifier 的异常打断 tool 流水线。

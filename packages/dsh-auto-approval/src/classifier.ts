@@ -5,9 +5,9 @@
  *   参数）。不看 assistant 推理/回复，不看任何 tool 输出——恶意指令大多
  *   从 tool 输出进入上下文，排除它们就是最有效的 prompt injection 防线。
  * - **两阶段**：Stage 1 fast 单 token 过滤（`0`=allow / 其余=flagged）；
- *   只有 flagged 的调用进 Stage 2 CoT 深查（末行 `VERDICT: ALLOW|DENY|ASK`）。
+ *   只有 flagged 的调用进 Stage 2 CoT 深查（末行 `VERDICT: ALLOW|DENY`）。
  * - **fail-closed**：超时、解析失败、模型不可用、意外 tool-call 输出——
- *   一律返回 fail-closed（调用方转 ask），绝不默认放行。
+ *   一律返回 fail-closed（调用方转 deny），绝不默认放行。
  *
  * 本模块不碰 cordis：`llm` 以最小结构类型注入，测试可直接 stub。
  * @module @deepseek-ai/dsh-auto-approval/classifier
@@ -35,9 +35,9 @@ export interface ClassifierInput {
 export type ClassifierOutcome =
   /** Stage 1 直接放行。 */
   | { readonly status: 'allow'; readonly stage: 'L1-fast'; readonly route: ModelRoute; readonly latencyMs: number }
-  /** Stage 2 三态结论（rationale 进审计，不回模型）。 */
-  | { readonly status: 'allow' | 'deny' | 'ask'; readonly stage: 'L1-deep'; readonly route: ModelRoute; readonly latencyMs: number; readonly rationale: string }
-  /** 任一阶段的失败：超时/解析失败/模型异常。调用方必须转 ask。 */
+  /** Stage 2 二态结论（rationale 进审计，不回模型）。全托管无 ask：不确定即 DENY。 */
+  | { readonly status: 'allow' | 'deny'; readonly stage: 'L1-deep'; readonly route: ModelRoute; readonly latencyMs: number; readonly rationale: string }
+  /** 任一阶段的失败：超时/解析失败/模型异常。调用方必须转 deny（全托管 fail-closed 即拒）。 */
   | { readonly status: 'fail-closed'; readonly stage: 'L1-fast' | 'L1-deep'; readonly error: string }
 
 /** prompt 规模上限：用户意图 / 参数 JSON 各自截断，避免审计调用失控放大。 */
@@ -87,7 +87,6 @@ function stage2System(guidance: string | undefined): string {
     'Think step by step briefly, then finish with exactly one final line:',
     'VERDICT: ALLOW    (run it now)',
     'VERDICT: DENY     (refuse; the agent may retry a safer alternative)',
-    'VERDICT: ASK      (defer to the human)',
   ].join('\n')
 }
 
@@ -154,7 +153,7 @@ async function callModel(
   }
 }
 
-const VERDICT_PATTERN = /VERDICT:\s*(ALLOW|DENY|ASK)/gi
+const VERDICT_PATTERN = /VERDICT:\s*(ALLOW|DENY)/gi
 
 /**
  * 跑 L1 两阶段判定。任何异常（含超时、解析失败）归一为 fail-closed 结果，
@@ -193,11 +192,11 @@ export async function classifyL1(
     return { status: 'fail-closed', stage: 'L1-deep', error: error instanceof Error ? error.message : String(error) }
   }
   VERDICT_PATTERN.lastIndex = 0
-  let verdict: 'allow' | 'deny' | 'ask' | undefined
+  let verdict: 'allow' | 'deny' | undefined
   let match: RegExpExecArray | null
   while ((match = VERDICT_PATTERN.exec(stage2)) !== null) {
     const raw = match[1]
-    if (raw !== undefined) verdict = raw.toLowerCase() as 'allow' | 'deny' | 'ask'
+    if (raw !== undefined) verdict = raw.toLowerCase() as 'allow' | 'deny'
   }
   if (verdict === undefined) {
     return { status: 'fail-closed', stage: 'L1-deep', error: `no VERDICT line in model output (${stage2.length} chars)` }

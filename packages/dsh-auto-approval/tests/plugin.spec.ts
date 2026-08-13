@@ -76,10 +76,10 @@ describe('pre-execute 拦截（L0 规则引擎）', () => {
     expect(audited.at(-1)?.data).toMatchObject({ stage: 'L0-deny', decision: 'deny', pattern: 'top-secret-regex' })
   })
 
-  it('命中 ask 规则 → ask 转人工', async () => {
+  it('命中 ask 规则 → deny（全托管：原转人工改为直接拒绝，不确定即拒）', async () => {
     const { run } = harness()
     const decision = await run(makeExec('bash', { command: 'sudo apt install x' }))
-    expect(decision).toMatchObject({ kind: 'ask' })
+    expect(decision).toMatchObject({ kind: 'deny', reason: DENY_REASON })
     expect((decision as { reason?: string }).reason).not.toMatch(/sudo/)
   })
 
@@ -109,10 +109,10 @@ describe('L0 deny 单调 guard（M3）', () => {
 })
 
 describe('escalation 豁免（M5）', () => {
-  it('带 sandbox_permissions+justification 的调用跳过 ask 规则直接放行', async () => {
+  it('带 sandbox_permissions+justification 的调用跳过 legacy ask 规则直接放行', async () => {
     const { run } = harness()
     const decision = await run(makeExec('bash', {
-      command: 'sudo apt install x', // 命中 ask 规则
+      command: 'sudo apt install x', // 命中 legacy ask 规则
       sandbox_permissions: 'danger-full-access',
       justification: 'need root to install',
     }))
@@ -131,16 +131,16 @@ describe('escalation 豁免（M5）', () => {
 })
 
 describe('防失控（M6）', () => {
-  it('连续 deny 达上限后本 turn 内白名单也转人工；新 turn 恢复', async () => {
+  it('连续 deny 达上限后本 turn 内白名单也拒绝；新 turn 恢复', async () => {
     const { run } = harness({ consecutiveDenyLimit: 1, denyPatterns: ['forbidden'], auditSessionEvents: true })
     const { agent, events, audited } = fakeAgent([{
       type: 'turn/start', seq: 0, time: Date.now(), data: { turn: 1 },
     } as unknown as SessionEvent])
 
     expect(await run(makeExec('bash', { command: 'forbidden' }, agent))).toMatchObject({ kind: 'deny' })
-    // 已暂停：连白名单工具都转人工
+    // 已暂停：连白名单工具都拒绝（全托管无人工，一律 deny）
     const paused = await run(makeExec('read', { path: 'x' }, agent))
-    expect(paused).toMatchObject({ kind: 'ask' })
+    expect(paused).toMatchObject({ kind: 'deny' })
     expect(audited.at(-1)?.data.stage).toBe('paused')
     // 新 turn：恢复自动放行
     events.push({ type: 'turn/start', seq: 1, time: Date.now(), data: { turn: 2 } } as unknown as SessionEvent)
@@ -234,19 +234,19 @@ describe('L1 LLM classifier', () => {
     })
   }
 
-  it('无 ctx.llm 服务 → fail-closed 转 ask', async () => {
+  it('无 ctx.llm 服务 → fail-closed 转 deny', async () => {
     const { run } = harness({ ...fastRoute, auditSessionEvents: true })
     const { agent, audited } = fakeAgent([userMessage('please deploy')])
     const decision = await run(makeExec('bash', { command: 'pnpm test' }, agent))
-    expect(decision).toMatchObject({ kind: 'ask' })
-    expect(audited.at(-1)?.data).toMatchObject({ stage: 'L1-fail-closed', decision: 'ask' })
+    expect(decision).toMatchObject({ kind: 'deny' })
+    expect(audited.at(-1)?.data).toMatchObject({ stage: 'L1-fail-closed', decision: 'deny' })
   })
 
-  it('session 无用户消息（无意图上下文）→ fail-closed 转 ask', async () => {
+  it('session 无用户消息（无意图上下文）→ fail-closed 转 deny', async () => {
     const { ctx, run } = harness(fastRoute)
     provideLlm(ctx, '0')
     const { agent } = fakeAgent()
-    expect(await run(makeExec('bash', { command: 'pnpm test' }, agent))).toMatchObject({ kind: 'ask' })
+    expect(await run(makeExec('bash', { command: 'pnpm test' }, agent))).toMatchObject({ kind: 'deny' })
   })
 
   it('fast 判定 0 → allow；审计含路由与阶段', async () => {
@@ -267,16 +267,16 @@ describe('L1 LLM classifier', () => {
       userMessage('delete everything'),
     ])
     expect(await run(makeExec('bash', { command: 'rm -rf ~/docs' }, agent))).toMatchObject({ kind: 'deny' })
-    // L1 deny 计数 → 已暂停
-    expect(await run(makeExec('read', { path: 'x' }, agent))).toMatchObject({ kind: 'ask' })
+    // L1 deny 计数 → 已暂停，一律 deny
+    expect(await run(makeExec('read', { path: 'x' }, agent))).toMatchObject({ kind: 'deny' })
     void events
   })
 
-  it('L1 解析失败 → fail-closed 转 ask（绝不默认放行）', async () => {
+  it('L1 解析失败 → fail-closed 转 deny（绝不默认放行）', async () => {
     const { ctx, run } = harness(fastRoute)
     provideLlm(ctx, '1', 'no verdict in this output')
     const { agent } = fakeAgent([userMessage('do something')])
-    expect(await run(makeExec('bash', { command: 'curl example.com' }, agent))).toMatchObject({ kind: 'ask' })
+    expect(await run(makeExec('bash', { command: 'curl example.com' }, agent))).toMatchObject({ kind: 'deny' })
   })
 })
 
@@ -305,19 +305,19 @@ describe('remote 状态 / 历史 / toggle', () => {
     return { updates }
   }
 
-  it('getStatus 累计统计随决策更新（allow/deny/ask 各自计数）', async () => {
+  it('getStatus 累计统计随决策更新（allow/deny 两态计数）', async () => {
     const ctx = new Context()
     ctx.provide('tools', { guard: () => () => {} })
     apply(ctx, { denyPatterns: ['forbidden'] })
     const run = (exec: ToolExecution) => ctx.waterfall('tools/pre-execute', exec, async (): Promise<PreToolDecision> => ALLOW)
     const { agent } = fakeAgent()
     await run(makeExec('bash', { command: 'forbidden' }, agent))   // deny
-    await run(makeExec('bash', { command: 'sudo x' }, agent))      // ask
+    await run(makeExec('bash', { command: 'sudo x' }, agent))      // legacy ask → deny
     await run(makeExec('read', { path: '/tmp/x' }, agent))         // whitelist allow
     await run(makeExec('bash', { command: 'pnpm test' }, agent))   // default allow
     const service = ctx.get('autoApprovalStatus') as unknown as { getStatus(agent: Agent): unknown }
-    const status = service.getStatus(agent) as { approvals: number; asks: number; totalDenials: number }
-    expect(status).toMatchObject({ approvals: 2, asks: 1, totalDenials: 1 })
+    const status = service.getStatus(agent) as { approvals: number; totalDenials: number }
+    expect(status).toMatchObject({ approvals: 2, totalDenials: 2 })
   })
 
   it('getHistory 返回最近决策（新→旧，含 pattern）', async () => {

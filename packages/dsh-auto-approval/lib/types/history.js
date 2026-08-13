@@ -2,8 +2,8 @@
  * 决策历史环形缓冲 + 累计计数（per agent）。
  *
  * 给 client 伴侣包的弹窗表格提供最近决策（时间 / 工具 / 阶段 / 结论 /
- * 命中的 pattern），给 chip 的 hover tooltip 提供累计统计
- * （approvals / denials / asks）。
+ * 命中的 pattern），给 chip 的 hover tooltip 提供累计统计（approvals /
+ * denials）。
  *
  * 与 tracker 的分工：tracker 只算「本 turn 连续 deny」（防失控用），
  * 这里算「插件加载以来的累计决策」。无 agent 的调用不记录（与 tracker
@@ -26,7 +26,7 @@ export class DecisionHistory {
             return;
         let state = this.states.get(agent);
         if (state === undefined) {
-            state = { records: [], counts: { approvals: 0, denials: 0, asks: 0 } };
+            state = { records: [], counts: { approvals: 0, denials: 0 } };
             this.states.set(agent, state);
         }
         state.records.push({ time: new Date().toISOString(), ...event });
@@ -38,9 +38,6 @@ export class DecisionHistory {
                 break;
             case 'deny':
                 state.counts.denials += 1;
-                break;
-            case 'ask':
-                state.counts.asks += 1;
                 break;
         }
     }
@@ -57,10 +54,10 @@ export class DecisionHistory {
     /** 该 agent 的累计统计。无 agent 返回全零。 */
     counts(agent) {
         if (agent === undefined)
-            return { approvals: 0, denials: 0, asks: 0 };
+            return { approvals: 0, denials: 0 };
         const state = this.states.get(agent);
         if (state === undefined)
-            return { approvals: 0, denials: 0, asks: 0 };
+            return { approvals: 0, denials: 0 };
         return state.counts;
     }
 }

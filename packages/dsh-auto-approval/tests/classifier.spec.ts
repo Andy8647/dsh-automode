@@ -99,9 +99,9 @@ describe('classifyL1 两阶段判定', () => {
     if (outcome.status === 'deny') expect(outcome.rationale).toContain('deletes user data')
   })
 
-  it('Stage 2 VERDICT: ASK → ask', async () => {
+  it('Stage 2 VERDICT: ASK 不是合法结论 → fail-closed（全托管无 ask 档，ASK 不匹配即拒绝）', async () => {
     const llm = stubLlm('1', 'unclear intent\nVERDICT: ASK')
-    expect(await classifyL1(llm, CONFIG, INPUT)).toMatchObject({ status: 'ask', stage: 'L1-deep' })
+    expect(await classifyL1(llm, CONFIG, INPUT)).toMatchObject({ status: 'fail-closed', stage: 'L1-deep' })
   })
 
   it('Stage 1 输出非 0（含垃圾输出）一律进 Stage 2', async () => {

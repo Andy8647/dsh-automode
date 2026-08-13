@@ -7,7 +7,7 @@
  * Clicking the chip opens the official Modal showing:
  * - the on/off toggle (drives the host `setEnabled` remote, persisted via
  *   settings when available);
- * - cumulative counts (approved / denied / asked);
+ * - cumulative counts (approved / denied);
  * - the recent decisions table (time, tool, stage, verdict, matched
  *   pattern / rationale).
  *
@@ -67,15 +67,15 @@ const DIALOG_WIDTH_CSS = '.aa-modal-wide { width: min(660px, 100%) !important; }
 /* Text helpers                                                        */
 /* ------------------------------------------------------------------ */
 
-/** Cumulative counts as a compact "✓ n · ✗ n · ? n" line for the tooltip. */
+/** Cumulative counts as a compact "✓ n · ✗ n" line for the tooltip. */
 function countLine(status: AutoApprovalStatus): string {
-  return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied · ? ${status.asks} asked`
+  return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`
 }
 
 /** Armed-config summary (no counts; the dialog shows those as tiles). */
 function summaryLine(status: AutoApprovalStatus): string {
   const parts = [
-    `L0: ${status.denyPatterns} deny / ${status.askPatterns} ask patterns`,
+    `L0: ${status.denyPatterns} deny (+${status.askPatterns} legacy ask) patterns`,
     `${status.autoApproveTools} auto-approve tools`,
     status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
   ]
@@ -115,9 +115,9 @@ const HEADER_CELL: React.CSSProperties = {
   background: BG_LAYER_2,
 }
 
-/** Verdict label: colored by the official state-token triad. */
+/** Verdict label: colored by the official state-token pair (allow/deny only). */
 function VerdictBadge({ decision }: { decision: DecisionRecord['decision'] }): ReactNode {
-  const color = decision === 'allow' ? SUCCESS : decision === 'deny' ? ERROR : WARN
+  const color = decision === 'allow' ? SUCCESS : ERROR
   return <span style={{ color, fontWeight: 600, whiteSpace: 'nowrap' }}>{decision}</span>
 }
 
@@ -213,7 +213,7 @@ function DialogContent({
       {/* Paused notice */}
       {status.paused && (
         <div style={{ marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }}>
-          Paused: deny limit reached this turn — calls require manual approval.
+          Paused: deny limit reached this turn — calls are denied until the next turn.
         </div>
       )}
 
@@ -221,7 +221,6 @@ function DialogContent({
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
         <StatTile label="Approved" value={status.approvals} color={SUCCESS} />
         <StatTile label="Denied" value={status.totalDenials} color={ERROR} />
-        <StatTile label="Asked" value={status.asks} color={WARN} />
       </div>
 
       {/* Recent decisions */}

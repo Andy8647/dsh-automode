@@ -36,7 +36,6 @@ export interface AutoApprovalStatus {
   readonly denials: number
   readonly paused: boolean
   readonly approvals: number
-  readonly asks: number
   readonly totalDenials: number
 }
 
@@ -45,7 +44,7 @@ export interface DecisionRecord {
   readonly time: string
   readonly tool: string
   readonly stage: string
-  readonly decision: 'allow' | 'deny' | 'ask'
+  readonly decision: 'allow' | 'deny'
   readonly pattern?: string
   readonly detail?: string
 }
@@ -60,7 +59,6 @@ const statusSchema = z.object({
   denials: z.number().readonly(),
   paused: z.boolean().readonly(),
   approvals: z.number().readonly(),
-  asks: z.number().readonly(),
   totalDenials: z.number().readonly(),
 })
 
@@ -69,7 +67,7 @@ const decisionRecordSchema = z.object({
   time: z.string().readonly(),
   tool: z.string().readonly(),
   stage: z.string().readonly(),
-  decision: z.enum(['allow', 'deny', 'ask']).readonly(),
+  decision: z.enum(['allow', 'deny']).readonly(),
   pattern: z.string().readonly().optional(),
   detail: z.string().readonly().optional(),
 })

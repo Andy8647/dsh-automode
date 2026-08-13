@@ -21,7 +21,8 @@ export interface Config {
      * `~/.dsh/logs/auto-approval.log` 不受影响，始终记录。
      */
     auditSessionEvents?: boolean;
-    /** 命中即 ask（转人工审批）的正则列表。 */
+    /** 命中即 ask 的正则列表（已删：全托管无人工，不确定的调用直接 deny）。
+     *  字段保留以向后兼容旧配置，语义已并入 deny——命中即拒绝。 */
     askPatterns?: string[];
     /** 直接放行的 tool name 白名单（如 read、grep、ls 类只读工具）。 */
     autoApproveTools?: string[];
@@ -32,7 +33,7 @@ export interface Config {
      * 豁免，这是给只读 shell 命令的唯一免 L1 通道。
      */
     bashCommandPrefixes?: string[];
-    /** 连续被 deny N 次后暂停自动放行，本 turn 内全部转人工（防失控）。 */
+    /** 连续被 deny N 次后暂停自动放行，本 turn 内一律 deny（防失控）。 */
     consecutiveDenyLimit?: number;
     /** L1 Stage 1（fast 过滤）的 provider；须与 classifierFastModel 成对。 */
     classifierFastProvider?: string;
@@ -42,7 +43,7 @@ export interface Config {
     classifierDeepProvider?: string;
     /** L1 Stage 2（CoT 深查）的 model；缺省沿用 fast。 */
     classifierDeepModel?: string;
-    /** L1 单次模型调用的超时（毫秒），超时 fail-closed 转 ask。 */
+    /** L1 单次模型调用的超时（毫秒），超时 fail-closed 转 deny。 */
     classifierTimeoutMs?: number;
     /** 用户自定义判定准则，作为 guidance 注入 L1 prompt（不是硬规则）。 */
     classifierGuidance?: string;
@@ -91,6 +92,10 @@ export interface ResolvedConfig {
 /**
  * 解析并校验配置。schema 先填默认值，这里做 schema 表达不了的校验；
  * 任一违规 throw（插件加载失败优于运行时静默放行）。
+ *
+ * 语义变迁（全托管）：`askPatterns` 字段保留以兼容旧配置，但命中即
+ * **deny**——插件初衷是无人介入的全托管，不确定的调用直接拒绝而非转
+ * 人工。`ask` 在 resolved 里与 deny 同义，只保留列表独立以便审计区分来源。
  * @param config - Loader 或测试传入的原始配置。
  * @returns 不可变的解析后配置。
  */

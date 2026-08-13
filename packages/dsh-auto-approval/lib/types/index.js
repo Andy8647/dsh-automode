@@ -1,24 +1,27 @@
 /**
  * DSH 权限自动审批插件 — `@deepseek-ai/dsh-auto-approval`
  *
- * 在 `tools/pre-execute` 瀑布最前挂一个三层 classifier，给 dsh 的 approval
+ * 在 `tools/pre-execute` 瀑布最前挂一个两态 classifier，给 dsh 的 approval
  * policy 增加第三档 `auto`（现有：`ask` / `never`）：
  *
- *   L0 规则引擎（硬底线）→ L1 LLM classifier（意图对齐，可配）→ L2 人工兜底
+ *   L0 规则引擎（硬底线）→ L1 LLM classifier（意图对齐，可配）
+ *
+ * 全托管模式：决策收敛为 allow/deny 两态，不转人工。不确定的调用
+ * （原 askPatterns 命中、L1 判定 ASK、fail-closed、防失控 pause）一律 deny。
  *
  * 设计要点（详见 README「方案设计」）：
  * - L0 deny 同时走 `ctx.tools.guard()` 单调注册（M3），prepend 旁路不掉
- * - deny/ask 的 reason 是通用文案，pattern 只进审计与日志（M2）
- * - 检测到 sandbox escalation 参数即豁免 ask/L1，避免双重审批（M5）
- * - 连续 deny 达上限后本 turn 暂停自动放行（M6），turn 边界从 session log 推导
- * - L1 一切失败 fail-closed 转 ask，绝不默认放行
+ * - deny 的 reason 是通用文案，pattern 只进审计与日志（M2）
+ * - 检测到 sandbox escalation 参数即豁免 L1，避免双重审批（M5）
+ * - 连续 deny 达上限后本 turn 暂停自动放行（M6，暂停期间一律 deny），turn 边界从 session log 推导
+ * - L1 一切失败 fail-closed 转 deny，绝不默认放行
  *
  * @module @deepseek-ai/dsh-auto-approval
  */
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
 import { Config, resolveConfig } from "./config.js";
 import { classifyL1 } from "./classifier.js";
-import { ASK_REASON, createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchBashPrefix, matchFirst, matchSelfKill, selfKillDenyReason } from "./rules.js";
+import { createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchBashPrefix, matchFirst, matchSelfKill, selfKillDenyReason } from "./rules.js";
 import { audit, auditArmed } from "./audit.js";
 import { AutoApprovalStatusService } from "./remote.js";
 import { remoteManifest } from "./remote-manifest.js";
@@ -28,13 +31,13 @@ export const name = 'auto-approval';
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
 export const NS = settingsNamespace('auto-approval');
 export { Config } from "./config.js";
-/** 连续 deny 达上限后转人工的文案（通用，不含计数细节以外信息）。 */
+/** 连续 deny 达上限后暂停自动放行的 deny 文案（M6 防失控，通用，不含计数细节以外信息）。 */
 const PAUSED_REASON = 'auto-approval: auto-approval is paused after repeated denials this turn. ' +
-    'Stop attempting blocked actions and check with the user before continuing.';
-/** L1 不可用（无模型服务或无用户意图上下文）时 fail-closed 的文案。 */
-const L1_UNAVAILABLE_REASON = 'auto-approval: automatic classifier is unavailable; deferring to manual approval.';
-/** L1 判定失败（超时/解析失败）时 fail-closed 的文案。 */
-const L1_FAILED_REASON = 'auto-approval: automatic classifier failed; deferring to manual approval.';
+    'Stop attempting blocked actions; the call is denied and will stay denied until the next turn.';
+/** L1 不可用（无模型服务或无用户意图上下文）时 fail-closed 的 deny 文案。 */
+const L1_UNAVAILABLE_REASON = 'auto-approval: automatic classifier is unavailable; the call is denied.';
+/** L1 判定失败（超时/解析失败）时 fail-closed 的 deny 文案。 */
+const L1_FAILED_REASON = 'auto-approval: automatic classifier failed; the call is denied.';
 /**
  * 从 session log 提取最近一条真实用户消息的文本（L1 的意图输入）。
  * 只看 `source.kind === 'user'` 的消息：plugin 注入（ask-user 类工具的
@@ -114,7 +117,6 @@ export function apply(ctx, config = {}) {
             denials: tracker.denials(agent),
             paused: tracker.isPaused(agent),
             approvals: counts.approvals,
-            asks: counts.asks,
             totalDenials: counts.denials,
         };
     };
@@ -158,7 +160,7 @@ export function apply(ctx, config = {}) {
         typert.register(remoteManifest);
     });
     const arm = () => {
-        logger.info(`auto-approval armed: ${resolved.deny.length} deny / ${resolved.ask.length} ask patterns, ` +
+        logger.info(`auto-approval armed: ${resolved.deny.length} deny patterns (+${resolved.ask.length} legacy ask patterns, now deny), ` +
             `${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, ` +
             `consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` +
             (resolved.classifier === undefined
@@ -235,30 +237,30 @@ export function apply(ctx, config = {}) {
                 return { kind: 'deny', reason: selfKillDenyReason(process.pid) };
             }
         }
-        // ---- M6 防失控：本 turn 连续 deny 达上限，暂停自动放行 ----
+        // ---- M6 防失控：本 turn 连续 deny 达上限，暂停自动放行（一律 deny） ----
         if (tracker.isPaused(agent)) {
             auditDecision(ctx, agent, {
-                tool: exec.name, callId, stage: 'paused', decision: 'ask',
+                tool: exec.name, callId, stage: 'paused', decision: 'deny',
                 detail: `consecutiveDenyLimit=${resolved.consecutiveDenyLimit} reached`,
             });
-            return { kind: 'ask', reason: PAUSED_REASON };
+            return { kind: 'deny', reason: PAUSED_REASON };
         }
-        // ---- M5：sandbox escalation 请求豁免 ask/L1（避免双重审批） ----
+        // ---- M5：sandbox escalation 请求豁免 L1（避免双重审批） ----
         if (hasEscalationArgs(exec.arguments)) {
             auditDecision(ctx, agent, { tool: exec.name, callId, stage: 'escalation-bypass', decision: 'allow' });
             return next();
         }
-        // ---- L0 ask（转人工） ----
+        // ---- L0 legacy ask（语义已并入 deny：askPatterns 命中即拒绝，全托管不转人工） ----
         if (text !== undefined) {
             const hit = matchFirst(text, resolved.ask);
             if (hit !== undefined) {
                 const pattern = resolved.askSources[hit.index];
-                logger.info(`ask ${exec.name} (${callId}): matched ask pattern /${pattern ?? '?'}/`);
+                logger.info(`deny ${exec.name} (${callId}): matched legacy ask pattern /${pattern ?? '?'}/ (ask now denies)`);
                 auditDecision(ctx, agent, {
-                    tool: exec.name, callId, stage: 'L0-ask', decision: 'ask',
+                    tool: exec.name, callId, stage: 'L0-ask', decision: 'deny',
                     ...pattern === undefined ? {} : { pattern },
                 });
-                return { kind: 'ask', reason: ASK_REASON };
+                return { kind: 'deny', reason: DENY_REASON };
             }
         }
         // ---- 只读工具白名单 / bash 命令前缀白名单 ----
@@ -273,8 +275,8 @@ export function apply(ctx, config = {}) {
             const intent = latestUserIntent(agent);
             if (llm === undefined || intent === undefined) {
                 const detail = llm === undefined ? 'no ctx.llm service' : 'no user message in session log';
-                auditDecision(ctx, agent, { tool: exec.name, callId, stage: 'L1-fail-closed', decision: 'ask', detail });
-                return { kind: 'ask', reason: L1_UNAVAILABLE_REASON };
+                auditDecision(ctx, agent, { tool: exec.name, callId, stage: 'L1-fail-closed', decision: 'deny', detail });
+                return { kind: 'deny', reason: L1_UNAVAILABLE_REASON };
             }
             const outcome = await classifyL1(llm, resolved.classifier, {
                 intent,
@@ -285,8 +287,8 @@ export function apply(ctx, config = {}) {
             });
             if (outcome.status === 'fail-closed') {
                 logger.warn(`L1 ${outcome.stage} failed for ${exec.name} (${callId}): ${outcome.error}`);
-                auditDecision(ctx, agent, { tool: exec.name, callId, stage: 'L1-fail-closed', decision: 'ask', detail: outcome.error });
-                return { kind: 'ask', reason: L1_FAILED_REASON };
+                auditDecision(ctx, agent, { tool: exec.name, callId, stage: 'L1-fail-closed', decision: 'deny', detail: outcome.error });
+                return { kind: 'deny', reason: L1_FAILED_REASON };
             }
             const stage = outcome.stage;
             if (outcome.status === 'deny') {
@@ -304,8 +306,7 @@ export function apply(ctx, config = {}) {
                 latencyMs: outcome.latencyMs,
                 ...outcome.stage === 'L1-deep' ? { detail: outcome.rationale } : {},
             });
-            if (outcome.status === 'ask')
-                return { kind: 'ask', reason: ASK_REASON };
+            // L1 只剩 allow/deny 两态：deny 已在上方返回，这里只剩 allow → 放行。
             return next();
         }
         // ---- 未命中任何规则：默认放行（与瀑布 fallback 一致） ----

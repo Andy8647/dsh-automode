@@ -32,7 +32,6 @@ const statusSchema = z.object({
     denials: z.number().readonly(),
     paused: z.boolean().readonly(),
     approvals: z.number().readonly(),
-    asks: z.number().readonly(),
     totalDenials: z.number().readonly(),
 });
 /** Wire record of one auto-approval decision (mirror of `DecisionRecord`). */
@@ -40,7 +39,7 @@ const decisionRecordSchema = z.object({
     time: z.string().readonly(),
     tool: z.string().readonly(),
     stage: z.string().readonly(),
-    decision: z.enum(['allow', 'deny', 'ask']).readonly(),
+    decision: z.enum(['allow', 'deny']).readonly(),
     pattern: z.string().readonly().optional(),
     detail: z.string().readonly().optional(),
 });

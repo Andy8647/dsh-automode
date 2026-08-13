@@ -69,6 +69,10 @@ function resolveRoute(label, provider, model) {
 /**
  * 解析并校验配置。schema 先填默认值，这里做 schema 表达不了的校验；
  * 任一违规 throw（插件加载失败优于运行时静默放行）。
+ *
+ * 语义变迁（全托管）：`askPatterns` 字段保留以兼容旧配置，但命中即
+ * **deny**——插件初衷是无人介入的全托管，不确定的调用直接拒绝而非转
+ * 人工。`ask` 在 resolved 里与 deny 同义，只保留列表独立以便审计区分来源。
  * @param config - Loader 或测试传入的原始配置。
  * @returns 不可变的解析后配置。
  */

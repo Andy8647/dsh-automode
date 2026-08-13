@@ -2,8 +2,8 @@
  * 决策历史环形缓冲 + 累计计数（per agent）。
  *
  * 给 client 伴侣包的弹窗表格提供最近决策（时间 / 工具 / 阶段 / 结论 /
- * 命中的 pattern），给 chip 的 hover tooltip 提供累计统计
- * （approvals / denials / asks）。
+ * 命中的 pattern），给 chip 的 hover tooltip 提供累计统计（approvals /
+ * denials）。
  *
  * 与 tracker 的分工：tracker 只算「本 turn 连续 deny」（防失控用），
  * 这里算「插件加载以来的累计决策」。无 agent 的调用不记录（与 tracker
@@ -20,8 +20,8 @@ export interface DecisionRecord {
     readonly tool: string;
     /** 判定来源阶段。 */
     readonly stage: DecisionStage;
-    /** 三态结论。 */
-    readonly decision: 'allow' | 'deny' | 'ask';
+    /** 二态结论（全托管：原 ask 已并入 deny）。 */
+    readonly decision: 'allow' | 'deny';
     /** 命中的 pattern 原文（仅 L0-* 阶段）。 */
     readonly pattern?: string;
     /** 补充说明（L1 rationale / fail-closed 原因 / pause 计数）。 */
@@ -31,7 +31,6 @@ export interface DecisionRecord {
 export interface DecisionCounts {
     readonly approvals: number;
     readonly denials: number;
-    readonly asks: number;
 }
 /**
  * per-agent 决策历史。记录 append-only，超容量丢最旧的（环形语义）；

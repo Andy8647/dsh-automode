@@ -1,17 +1,20 @@
 /**
  * DSH 权限自动审批插件 — `@deepseek-ai/dsh-auto-approval`
  *
- * 在 `tools/pre-execute` 瀑布最前挂一个三层 classifier，给 dsh 的 approval
+ * 在 `tools/pre-execute` 瀑布最前挂一个两态 classifier，给 dsh 的 approval
  * policy 增加第三档 `auto`（现有：`ask` / `never`）：
  *
- *   L0 规则引擎（硬底线）→ L1 LLM classifier（意图对齐，可配）→ L2 人工兜底
+ *   L0 规则引擎（硬底线）→ L1 LLM classifier（意图对齐，可配）
+ *
+ * 全托管模式：决策收敛为 allow/deny 两态，不转人工。不确定的调用
+ * （原 askPatterns 命中、L1 判定 ASK、fail-closed、防失控 pause）一律 deny。
  *
  * 设计要点（详见 README「方案设计」）：
  * - L0 deny 同时走 `ctx.tools.guard()` 单调注册（M3），prepend 旁路不掉
- * - deny/ask 的 reason 是通用文案，pattern 只进审计与日志（M2）
- * - 检测到 sandbox escalation 参数即豁免 ask/L1，避免双重审批（M5）
- * - 连续 deny 达上限后本 turn 暂停自动放行（M6），turn 边界从 session log 推导
- * - L1 一切失败 fail-closed 转 ask，绝不默认放行
+ * - deny 的 reason 是通用文案，pattern 只进审计与日志（M2）
+ * - 检测到 sandbox escalation 参数即豁免 L1，避免双重审批（M5）
+ * - 连续 deny 达上限后本 turn 暂停自动放行（M6，暂停期间一律 deny），turn 边界从 session log 推导
+ * - L1 一切失败 fail-closed 转 deny，绝不默认放行
  *
  * @module @deepseek-ai/dsh-auto-approval
  */

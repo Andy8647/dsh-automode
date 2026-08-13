@@ -25,7 +25,7 @@ export interface AutoApprovalStatus {
     readonly enabled: boolean;
     /** L0 deny 规则数。 */
     readonly denyPatterns: number;
-    /** L0 ask 规则数。 */
+    /** L0 legacy ask 规则数（命中即 deny，全托管不转人工）。 */
     readonly askPatterns: number;
     /** 免审工具白名单数量。 */
     readonly autoApproveTools: number;
@@ -37,8 +37,6 @@ export interface AutoApprovalStatus {
     readonly paused: boolean;
     /** 累计放行次数（插件加载以来）。 */
     readonly approvals: number;
-    /** 累计转人工次数（插件加载以来）。 */
-    readonly asks: number;
     /** 累计 deny 次数（插件加载以来）。 */
     readonly totalDenials: number;
 }

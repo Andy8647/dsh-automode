@@ -15,7 +15,7 @@ export type DecisionStage =
 'L0-deny'
 /** L0 自毁护栏：终止宿主进程的命令。 */
  | 'L0-selfkill'
-/** L0 ask 规则命中。 */
+/** L0 ask 规则命中（语义已改：askPatterns 命中即 deny，全托管不转人工）。 */
  | 'L0-ask'
 /** M5：escalation 参数豁免，交给 sandbox 升级通道审批。 */
  | 'escalation-bypass'
@@ -25,13 +25,15 @@ export type DecisionStage =
  | 'L1-fast'
 /** L1 Stage 2 CoT 深查得出结论。 */
  | 'L1-deep'
-/** L1 不可用（无模型/无意图/超时/解析失败），fail-closed 转 ask。 */
+/** L1 不可用（无模型/无意图/超时/解析失败），fail-closed 转 deny。 */
  | 'L1-fail-closed'
 /** 连续 deny 达上限，本 turn 暂停自动放行（M6）。 */
  | 'paused'
 /** 未命中任何规则，默认放行。 */
  | 'default-allow';
-/** `auto-approval/decision` 事件载荷（必须 lossless JSON）。 */
+/** `auto-approval/decision` 事件载荷（必须 lossless JSON）。
+ * 全托管收敛为 allow/deny 两态：不确定的调用（原 askPatterns 命中、L1 ASK、
+ * fail-closed、防失控 pause）统一 deny。 */
 export interface AutoApprovalDecisionEvent {
     /** tool 名。 */
     readonly tool: string;
@@ -39,8 +41,8 @@ export interface AutoApprovalDecisionEvent {
     readonly callId: string;
     /** 判定来源阶段。 */
     readonly stage: DecisionStage;
-    /** 三态结论。 */
-    readonly decision: 'allow' | 'deny' | 'ask';
+    /** 二态结论。 */
+    readonly decision: 'allow' | 'deny';
     /** 命中的 pattern 原文（仅 L0-* 阶段；pattern 的唯一落点）。 */
     readonly pattern?: string;
     /** L1 使用的模型路由（仅 L1-* 阶段）。 */

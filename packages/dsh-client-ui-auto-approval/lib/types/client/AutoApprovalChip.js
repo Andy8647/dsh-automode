@@ -8,7 +8,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  * Clicking the chip opens the official Modal showing:
  * - the on/off toggle (drives the host `setEnabled` remote, persisted via
  *   settings when available);
- * - cumulative counts (approved / denied / asked);
+ * - cumulative counts (approved / denied);
  * - the recent decisions table (time, tool, stage, verdict, matched
  *   pattern / rationale).
  *
@@ -48,14 +48,14 @@ const DIALOG_WIDTH_CSS = '.aa-modal-wide { width: min(660px, 100%) !important; }
 /* ------------------------------------------------------------------ */
 /* Text helpers                                                        */
 /* ------------------------------------------------------------------ */
-/** Cumulative counts as a compact "✓ n · ✗ n · ? n" line for the tooltip. */
+/** Cumulative counts as a compact "✓ n · ✗ n" line for the tooltip. */
 function countLine(status) {
-    return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied · ? ${status.asks} asked`;
+    return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`;
 }
 /** Armed-config summary (no counts; the dialog shows those as tiles). */
 function summaryLine(status) {
     const parts = [
-        `L0: ${status.denyPatterns} deny / ${status.askPatterns} ask patterns`,
+        `L0: ${status.denyPatterns} deny (+${status.askPatterns} legacy ask) patterns`,
         `${status.autoApproveTools} auto-approve tools`,
         status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
     ];
@@ -93,9 +93,9 @@ const HEADER_CELL = {
     top: 0,
     background: BG_LAYER_2,
 };
-/** Verdict label: colored by the official state-token triad. */
+/** Verdict label: colored by the official state-token pair (allow/deny only). */
 function VerdictBadge({ decision }) {
-    const color = decision === 'allow' ? SUCCESS : decision === 'deny' ? ERROR : WARN;
+    const color = decision === 'allow' ? SUCCESS : ERROR;
     return _jsx("span", { style: { color, fontWeight: 600, whiteSpace: 'nowrap' }, children: decision });
 }
 function DecisionRow({ record }) {
@@ -133,7 +133,7 @@ function StatTile({ label, value, color }) {
 function DialogContent({ status, history, toggling, error, onToggle, }) {
     return (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, children: [_jsxs("div", { style: { minWidth: 0 }, children: [_jsx("div", { style: { fontSize: 14, lineHeight: '22px', fontWeight: 600, color: LABEL_PRIMARY }, children: status.enabled ? 'Enabled' : 'Disabled' }), _jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: status.enabled
                                     ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
-                                    : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'outline' : 'primary', size: "sm", disabled: toggling, onClick: onToggle, style: { flexShrink: 0, whiteSpace: 'nowrap' }, children: status.enabled ? 'Turn off' : 'Turn on' })] }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls require manual approval." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR }), _jsx(StatTile, { label: "Asked", value: status.asks, color: WARN })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
+                                    : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'outline' : 'primary', size: "sm", disabled: toggling, onClick: onToggle, style: { flexShrink: 0, whiteSpace: 'nowrap' }, children: status.enabled ? 'Turn off' : 'Turn on' })] }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls are denied until the next turn." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
                 ? (_jsx("div", { style: { padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: "No auto-approval decisions recorded for this session yet." }))
                 : (
                 // The official dialog is min(380px, 100%) wide; the table scrolls

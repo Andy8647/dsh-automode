@@ -1,6 +1,6 @@
 # dsh-client-ui-auto-approval
 
-dsh-auto-approval 的 **client 伴侣包**：在聊天输入栏权限选择器（Read Only / Workspace Write / Full access）旁显示一个状态 chip，实时展示 host 侧 auto-approval 的运行态 —— armed 配置、本 turn 的 deny 计数、**累计统计（approved / denied / asked）**、暂停状态。
+dsh-auto-approval 的 **client 伴侣包**：在聊天输入栏权限选择器（Read Only / Workspace Write / Full access）旁显示一个状态 chip，实时展示 host 侧 auto-approval 的运行态 —— armed 配置、本 turn 的 deny 计数、**累计统计（approved / denied）**、暂停状态。
 
 ```
 [Access mode: Workspace Write]  ● AA on   [Select model...]
@@ -8,10 +8,10 @@ dsh-auto-approval 的 **client 伴侣包**：在聊天输入栏权限选择器�
 
 ## 交互
 
-- **hover chip**：tooltip 显示完整状态——L0 规则数、L1 路由、累计统计（✓ approved · ✗ denied · ? asked）、暂停/本 turn deny 计数。
+- **hover chip**：tooltip 显示完整状态——L0 规则数、L1 路由、累计统计（✓ approved · ✗ denied）、暂停/本 turn deny 计数。
 - **点击 chip**：弹出对话框——
   - **开关**：Turn on/off（走 host `setEnabled` remote，优先写 settings 持久化，热生效且重启后保持）；
-  - **累计统计**：三张数字卡（Approved / Denied / Asked）；
+  - **累计统计**：两张数字卡（Approved / Denied）；
   - **决策表格**：本 session 最近 100 条决策（时间、工具、阶段、结论、命中的 pattern / L1 rationale），新→旧，弹窗打开时每 2s 刷新。
 
 ## 工作原理

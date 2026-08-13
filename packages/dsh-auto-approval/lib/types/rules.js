@@ -49,7 +49,7 @@ export function matchBashPrefix(command, prefixes) {
 /**
  * M5：检测 sandbox escalation 请求。`sandbox_permissions` 与 `justification`
  * 按上游 `validateEscalationArgs` 的约定成对出现；成对存在时本插件跳过
- * ask 规则与 L1（直接 allow），把审批留给 escalation 自己的通道，避免
+ * legacy ask 规则与 L1（直接 allow），把审批留给 escalation 自己的通道，避免
  * 双重审批。L0 deny 不受此豁免影响（在调用方保证顺序）。
  */
 export function hasEscalationArgs(args) {
@@ -104,11 +104,12 @@ export function selfKillDenyReason(hostPid) {
 /** deny 返回给模型的通用文案：不含命中规则（M2），但把模型行为收窄成确定动作。
  * 旧文案「choose a safer alternative or ask」是开放决策——v4-flash 面对"为什么被拒
  * （不可知）+ 替代方案（可能不存在）"会陷入长时间 reasoning；改为直接报告+询问，
- * 模型无需自行规划。 */
+ * 模型无需自行规划。
+ *
+ * 全托管模式下无 ask 路径：不确定的调用统一 deny（含原 L0-askPatterns 命中、
+ * L1 判定 ASK、fail-closed、防失控 pause），模型报告结果即可，无人介入。 */
 export const DENY_REASON = 'auto-approval: this call was denied by the auto-approval security policy. ' +
     'Do not retry it or attempt an alternative. Report the denial to the user and ask how to proceed.';
-/** ask 转人工的通用文案：不含命中规则（M2）。 */
-export const ASK_REASON = 'auto-approval: this call requires manual approval.';
 /**
  * M3：由 L0 deny 规则构造单调 guard。guard 在所有 `tools/pre-execute`
  * listener 之后、tool body 之前执行，只能 deny 不能 allow——即使另一个

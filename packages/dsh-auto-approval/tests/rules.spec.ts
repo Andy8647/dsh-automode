@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../src/config.ts'
 import {
-  ASK_REASON,
   createDenyGuard,
   DENY_REASON,
   extractMatchableText,
@@ -177,7 +176,6 @@ describe('createDenyGuard（M2/M3）', () => {
     const reason = guard(exec('run secret-pattern now'))
     expect(reason).toBe(DENY_REASON)
     expect(reason).not.toContain('secret-pattern')
-    expect(ASK_REASON).not.toMatch(/pattern/)
   })
 
   it('未命中返回 undefined（单调：guard 永远不能 allow）', () => {
