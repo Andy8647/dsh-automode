@@ -42,4 +42,4 @@ client 侧设置页 section 是 slots 注册制（`settings.section` 独立页 /
 ## 参考
 
 - #396「设置页新增插件管理面板」是相邻需求（管插件的启停/卸载），本 issue 管插件的**配置暴露**，可合并推进。
-- 实际用例：`dsh-external/dsh-auto-approval`（`installSettingsSection` 注册 `auto-approval` namespace，Web UI 无 section，仅 settings.yaml 可配）。
+- 实际用例：`Andy8647/dsh-auto-approval`（`installSettingsSection` 注册 `auto-approval` namespace，Web UI 无 section，仅 settings.yaml 可配）。
