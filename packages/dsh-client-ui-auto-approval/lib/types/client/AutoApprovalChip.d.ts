@@ -5,7 +5,7 @@ export type AutoApprovalChipProps = PropsRuntime<'conversation.input.left'> & In
 /**
  * The status pill. It owns its polling and is intentionally silent on failure:
  * a failed remote read renders a red "AA" with the error in the tooltip rather
- * than breaking the composer.
+ * than breaking the composer. Clicking opens the dialog (toggle + history).
  */
-export declare function AutoApprovalChip({ getStatus }: AutoApprovalChipProps): import("react").JSX.Element;
+export declare function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoApprovalChipProps): import("react").JSX.Element;
 //# sourceMappingURL=AutoApprovalChip.d.ts.map

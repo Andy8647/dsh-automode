@@ -279,3 +279,78 @@ describe('L1 LLM classifier', () => {
     expect(await run(makeExec('bash', { command: 'curl example.com' }, agent))).toMatchObject({ kind: 'ask' })
   })
 })
+
+describe('remote 状态 / 历史 / toggle', () => {
+  /** stub settings 服务（可写），捕获 update 调用并触发 watcher（真实 provider 行为）。 */
+  function provideWritableSettings(ctx: Context, initial: Record<string, unknown>): {
+    updates: Array<Record<string, unknown>>
+  } {
+    const updates: Array<Record<string, unknown>> = []
+    let value = initial
+    const watchers: Array<() => void> = []
+    ctx.provide('settings', {
+      writable: true,
+      register(_ns: string, _schema: unknown) {
+        return {
+          get: () => value,
+          watch(cb: () => void) { watchers.push(cb); return () => {} },
+        }
+      },
+      update(_ns: unknown, patch: Record<string, unknown>) {
+        updates.push(patch)
+        value = { ...value, ...patch }
+        for (const cb of watchers) cb()
+      },
+    })
+    return { updates }
+  }
+
+  it('getStatus 累计统计随决策更新（allow/deny/ask 各自计数）', async () => {
+    const ctx = new Context()
+    ctx.provide('tools', { guard: () => () => {} })
+    apply(ctx, { denyPatterns: ['forbidden'] })
+    const run = (exec: ToolExecution) => ctx.waterfall('tools/pre-execute', exec, async (): Promise<PreToolDecision> => ALLOW)
+    const { agent } = fakeAgent()
+    await run(makeExec('bash', { command: 'forbidden' }, agent))   // deny
+    await run(makeExec('bash', { command: 'sudo x' }, agent))      // ask
+    await run(makeExec('read', { path: '/tmp/x' }, agent))         // whitelist allow
+    await run(makeExec('bash', { command: 'pnpm test' }, agent))   // default allow
+    const service = ctx.get('autoApprovalStatus') as unknown as { getStatus(agent: Agent): unknown }
+    const status = service.getStatus(agent) as { approvals: number; asks: number; totalDenials: number }
+    expect(status).toMatchObject({ approvals: 2, asks: 1, totalDenials: 1 })
+  })
+
+  it('getHistory 返回最近决策（新→旧，含 pattern）', async () => {
+    const ctx = new Context()
+    ctx.provide('tools', { guard: () => () => {} })
+    apply(ctx, { denyPatterns: ['forbidden'] })
+    const run = (exec: ToolExecution) => ctx.waterfall('tools/pre-execute', exec, async (): Promise<PreToolDecision> => ALLOW)
+    const { agent } = fakeAgent()
+    await run(makeExec('bash', { command: 'forbidden' }, agent))
+    await run(makeExec('read', { path: '/tmp/x' }, agent))
+    const service = ctx.get('autoApprovalStatus') as unknown as { getHistory(agent: Agent): Array<Record<string, unknown>> }
+    const history = service.getHistory(agent)
+    expect(history).toHaveLength(2)
+    expect(history[0]).toMatchObject({ tool: 'read', stage: 'whitelist', decision: 'allow' })
+    expect(history[1]).toMatchObject({ tool: 'bash', stage: 'L0-deny', decision: 'deny', pattern: 'forbidden' })
+  })
+
+  it('setEnabled 写 settings（writable provider）并返回新状态', async () => {
+    const ctx = new Context()
+    ctx.provide('tools', { guard: () => () => {} })
+    const { updates } = provideWritableSettings(ctx, { enabled: true })
+    apply(ctx, {})
+    // inject 回调是异步的，先 flush 微任务
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const service = ctx.get('autoApprovalStatus') as unknown as {
+      setEnabled(agent: Agent, enabled: boolean): Promise<{ enabled: boolean }>
+    }
+    const { agent } = fakeAgent()
+    const status = await service.setEnabled(agent, false)
+    expect(status.enabled).toBe(false)
+    expect(updates).toEqual([{ enabled: false }])
+    // 后续决策：enabled=false 时完全旁路
+    const run = (exec: ToolExecution) => ctx.waterfall('tools/pre-execute', exec, async (): Promise<PreToolDecision> => ALLOW)
+    expect(await run(makeExec('bash', { command: 'forbidden' }, agent))).toBe(ALLOW)
+  })
+})

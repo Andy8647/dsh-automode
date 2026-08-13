@@ -1,11 +1,15 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
-import type { AutoApprovalStatus } from './remote.ts';
-export type { AutoApprovalStatus } from './remote.ts';
+import type { AutoApprovalStatus, DecisionRecord } from './remote.ts';
+export type { AutoApprovalStatus, DecisionRecord } from './remote.ts';
 /** Injected business face of the composer status chip. */
 export interface AutoApprovalChipInjected {
     /** Read the current auto-approval status for this session's agent. */
     getStatus: () => Promise<RemoteResult<AutoApprovalStatus>>;
+    /** Read the recent auto-approval decisions for this session's agent. */
+    getHistory: () => Promise<RemoteResult<DecisionRecord[]>>;
+    /** Toggle auto-approval on/off (persisted via host settings when available). */
+    setEnabled: (enabled: boolean) => Promise<RemoteResult<AutoApprovalStatus>>;
 }
 /** Required services: the seat's slot registry and the Client Remote mount. */
 export declare const inject: string[];

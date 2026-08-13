@@ -6,15 +6,25 @@ window.__ModuleLoader__.load({
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
+		let react_dom = require("react-dom");
+		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		//#region lib/types/client/AutoApprovalChip.js
 		/**
 		* Composer status chip for the auto-approval runtime. Reads the host state via
 		* the injected `getStatus` remote call and renders a compact pill: a color-coded
-		* dot plus a short state word, with the full snapshot in the native tooltip.
+		* dot plus a short state word, with cumulative stats in the hover tooltip.
+		*
+		* Clicking the chip opens a dialog (portaled overlay, inline styles) showing:
+		* - the on/off toggle (drives the host `setEnabled` remote, persisted via
+		*   settings when available);
+		* - cumulative counts (approved / denied / asked);
+		* - a scrollable table of the recent decisions (time, tool, stage, verdict,
+		*   matched pattern / rationale).
 		*
 		* Inline styles on purpose (no CSS-module dependency): the standalone client
-		* bundle skips the upstream lightningcss pipeline, and this MVP only needs a
-		* small pill that sits beside the access-mode selector.
+		* bundle skips the upstream lightningcss pipeline. The overlay mirrors the
+		* upstream Modal tokens (mask + centered card) without importing the modal's
+		* CSS module.
 		*/
 		/** Poll cadence while the chip stays mounted (no event forwarding for third-party remotes). */
 		const POLL_MS = 2e3;
@@ -37,55 +47,425 @@ window.__ModuleLoader__.load({
 			fontSize: 11,
 			lineHeight: "22px",
 			whiteSpace: "nowrap",
-			cursor: "default"
+			cursor: "pointer",
+			userSelect: "none"
 		};
-		/** One human-readable status line for the tooltip. */
+		/** Cumulative counts as a compact "✓ n · ✗ n · ? n" line for the tooltip. */
+		function countLine(status) {
+			return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied · ? ${status.asks} asked`;
+		}
+		/** One human-readable tooltip line: config summary + cumulative stats. */
 		function describe(status) {
-			if (!status.enabled) return "auto-approval disabled";
+			if (!status.enabled) return `auto-approval disabled — ${countLine(status)}`;
 			const parts = [
 				`L0: ${status.denyPatterns} deny / ${status.askPatterns} ask`,
 				`${status.autoApproveTools} auto-approve tools`,
-				status.classifier === "disabled" ? "L1 off" : `L1 ${status.classifier}`
+				status.classifier === "disabled" ? "L1 off" : `L1 ${status.classifier}`,
+				countLine(status)
 			];
 			if (status.paused) parts.push("paused (deny limit reached)");
 			if (status.denials > 0) parts.push(`${status.denials} denial(s) this turn`);
 			return `auto-approval armed — ${parts.join(" · ")}`;
 		}
+		const OVERLAY = {
+			position: "fixed",
+			inset: 0,
+			zIndex: 1e3,
+			display: "flex",
+			alignItems: "center",
+			justifyContent: "center",
+			padding: 24,
+			background: "rgba(0,0,0,0.35)"
+		};
+		const DIALOG = {
+			display: "flex",
+			flexDirection: "column",
+			width: 560,
+			maxWidth: "100%",
+			maxHeight: "80vh",
+			overflow: "hidden",
+			borderRadius: 16,
+			border: "1px solid var(--color-border, rgba(128,128,128,0.4))",
+			background: "var(--color-bg, #fff)",
+			boxShadow: "0 16px 48px rgba(0,0,0,0.25)"
+		};
+		const DIALOG_HEADER = {
+			display: "flex",
+			alignItems: "center",
+			justifyContent: "space-between",
+			padding: "12px 16px",
+			borderBottom: "1px solid var(--color-border, rgba(128,128,128,0.25))"
+		};
+		const DIALOG_BODY = {
+			padding: 16,
+			overflowY: "auto"
+		};
+		const STAGE_COLORS = {
+			"L0-deny": "#ef4444",
+			"L0-selfkill": "#ef4444",
+			"L1-deep": "#ef4444",
+			"L0-ask": "#f59e0b",
+			"L1-fast": "#22c55e",
+			"whitelist": "#22c55e",
+			"escalation-bypass": "#22c55e",
+			"default-allow": "#22c55e",
+			"L1-fail-closed": "#f59e0b",
+			"paused": "#f59e0b"
+		};
+		/** Verdict badge: colored text chip matching the decision's meaning. */
+		function VerdictBadge({ decision }) {
+			const { text, color } = {
+				allow: {
+					text: "allow",
+					color: "#22c55e"
+				},
+				deny: {
+					text: "deny",
+					color: "#ef4444"
+				},
+				ask: {
+					text: "ask",
+					color: "#f59e0b"
+				}
+			}[decision];
+			return (0, react_jsx_runtime.jsx)("span", {
+				style: {
+					color,
+					fontWeight: 600
+				},
+				children: text
+			});
+		}
+		function DecisionRow({ record }) {
+			const detail = record.pattern !== void 0 ? `pattern /${record.pattern}/` : record.detail ?? "";
+			const time = new Date(record.time);
+			const timeText = Number.isNaN(time.getTime()) ? record.time : time.toLocaleTimeString(void 0, {
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit"
+			});
+			const stageColor = STAGE_COLORS[record.stage] ?? void 0;
+			return (0, react_jsx_runtime.jsxs)("tr", {
+				style: { borderTop: "1px solid var(--color-border, rgba(128,128,128,0.15))" },
+				children: [
+					(0, react_jsx_runtime.jsx)("td", {
+						style: {
+							...CELL,
+							whiteSpace: "nowrap",
+							color: "var(--color-text-secondary, inherit)"
+						},
+						children: timeText
+					}),
+					(0, react_jsx_runtime.jsx)("td", {
+						style: {
+							...CELL,
+							fontFamily: "var(--font-mono, ui-monospace, monospace)"
+						},
+						children: record.tool
+					}),
+					(0, react_jsx_runtime.jsx)("td", {
+						style: {
+							...CELL,
+							whiteSpace: "nowrap",
+							...stageColor !== void 0 ? { color: stageColor } : {}
+						},
+						children: record.stage
+					}),
+					(0, react_jsx_runtime.jsx)("td", {
+						style: CELL,
+						children: (0, react_jsx_runtime.jsx)(VerdictBadge, { decision: record.decision })
+					}),
+					(0, react_jsx_runtime.jsx)("td", {
+						style: {
+							...CELL,
+							maxWidth: 200,
+							overflow: "hidden",
+							textOverflow: "ellipsis",
+							whiteSpace: "nowrap",
+							color: "var(--color-text-secondary, inherit)"
+						},
+						title: detail,
+						children: detail
+					})
+				]
+			});
+		}
+		const CELL = {
+			padding: "5px 8px",
+			fontSize: 11,
+			textAlign: "left",
+			verticalAlign: "top"
+		};
+		/** Stat tile: a number with a colored label, used for the three cumulative counts. */
+		function StatTile({ label, value, color }) {
+			return (0, react_jsx_runtime.jsxs)("div", {
+				style: {
+					flex: 1,
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "center",
+					gap: 2,
+					padding: "10px 8px",
+					borderRadius: 10,
+					border: "1px solid var(--color-border, rgba(128,128,128,0.25))",
+					background: "var(--color-bg-subtle, transparent)"
+				},
+				children: [(0, react_jsx_runtime.jsx)("span", {
+					style: {
+						fontSize: 20,
+						fontWeight: 700,
+						color,
+						lineHeight: 1.2
+					},
+					children: value
+				}), (0, react_jsx_runtime.jsx)("span", {
+					style: {
+						fontSize: 10,
+						color: "var(--color-text-secondary, inherit)",
+						textTransform: "uppercase",
+						letterSpacing: .4
+					},
+					children: label
+				})]
+			});
+		}
+		/** Dialog body content: toggle row + stat tiles + decision table. */
+		function DialogContent({ status, history, toggling, onToggle, onClose }) {
+			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {
+				style: DIALOG_HEADER,
+				children: [(0, react_jsx_runtime.jsx)("span", {
+					style: {
+						fontSize: 14,
+						fontWeight: 600
+					},
+					children: "Auto-approval"
+				}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+					variant: "ghost",
+					size: "sm",
+					onClick: onClose,
+					children: "Close"
+				})]
+			}), (0, react_jsx_runtime.jsxs)("div", {
+				style: DIALOG_BODY,
+				children: [
+					(0, react_jsx_runtime.jsxs)("div", {
+						style: {
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "space-between",
+							gap: 12,
+							marginBottom: 14
+						},
+						children: [(0, react_jsx_runtime.jsxs)("div", { children: [(0, react_jsx_runtime.jsx)("div", {
+							style: {
+								fontSize: 13,
+								fontWeight: 600
+							},
+							children: status.enabled ? "Enabled" : "Disabled"
+						}), (0, react_jsx_runtime.jsx)("div", {
+							style: {
+								fontSize: 11,
+								color: "var(--color-text-secondary, inherit)"
+							},
+							children: status.enabled ? "Matching calls are auto-approved (L0 rules still hard-deny)." : "All calls fall through to the normal approval flow."
+						})] }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+							variant: status.enabled ? "primary" : "outline",
+							size: "sm",
+							disabled: toggling,
+							onClick: onToggle,
+							children: status.enabled ? "Turn off" : "Turn on"
+						})]
+					}),
+					(0, react_jsx_runtime.jsxs)("div", {
+						style: {
+							display: "flex",
+							gap: 8,
+							marginBottom: 14
+						},
+						children: [
+							(0, react_jsx_runtime.jsx)(StatTile, {
+								label: "Approved",
+								value: status.approvals,
+								color: "#22c55e"
+							}),
+							(0, react_jsx_runtime.jsx)(StatTile, {
+								label: "Denied",
+								value: status.totalDenials,
+								color: "#ef4444"
+							}),
+							(0, react_jsx_runtime.jsx)(StatTile, {
+								label: "Asked",
+								value: status.asks,
+								color: "#f59e0b"
+							})
+						]
+					}),
+					(0, react_jsx_runtime.jsxs)("div", {
+						style: {
+							fontSize: 12,
+							fontWeight: 600,
+							marginBottom: 6
+						},
+						children: ["Recent decisions", history.length > 0 && (0, react_jsx_runtime.jsxs)("span", {
+							style: {
+								fontSize: 10,
+								fontWeight: 400,
+								color: "var(--color-text-secondary, inherit)",
+								marginLeft: 6
+							},
+							children: [history.length, " shown (newest first)"]
+						})]
+					}),
+					history.length === 0 ? (0, react_jsx_runtime.jsx)("div", {
+						style: {
+							fontSize: 11,
+							color: "var(--color-text-secondary, inherit)",
+							padding: "12px 0"
+						},
+						children: "No auto-approval decisions recorded for this session yet."
+					}) : (0, react_jsx_runtime.jsxs)("table", {
+						style: {
+							width: "100%",
+							borderCollapse: "collapse",
+							fontSize: 11
+						},
+						children: [(0, react_jsx_runtime.jsx)("thead", { children: (0, react_jsx_runtime.jsxs)("tr", { children: [
+							(0, react_jsx_runtime.jsx)("th", {
+								style: {
+									...CELL,
+									color: "var(--color-text-secondary, inherit)",
+									fontWeight: 600
+								},
+								children: "Time"
+							}),
+							(0, react_jsx_runtime.jsx)("th", {
+								style: {
+									...CELL,
+									color: "var(--color-text-secondary, inherit)",
+									fontWeight: 600
+								},
+								children: "Tool"
+							}),
+							(0, react_jsx_runtime.jsx)("th", {
+								style: {
+									...CELL,
+									color: "var(--color-text-secondary, inherit)",
+									fontWeight: 600
+								},
+								children: "Stage"
+							}),
+							(0, react_jsx_runtime.jsx)("th", {
+								style: {
+									...CELL,
+									color: "var(--color-text-secondary, inherit)",
+									fontWeight: 600
+								},
+								children: "Verdict"
+							}),
+							(0, react_jsx_runtime.jsx)("th", {
+								style: {
+									...CELL,
+									color: "var(--color-text-secondary, inherit)",
+									fontWeight: 600
+								},
+								children: "Detail"
+							})
+						] }) }), (0, react_jsx_runtime.jsx)("tbody", { children: history.map((record, index) => (0, react_jsx_runtime.jsx)(DecisionRow, { record }, index)) })]
+					})
+				]
+			})] });
+		}
 		/**
 		* The status pill. It owns its polling and is intentionally silent on failure:
 		* a failed remote read renders a red "AA" with the error in the tooltip rather
-		* than breaking the composer.
+		* than breaking the composer. Clicking opens the dialog (toggle + history).
 		*/
-		function AutoApprovalChip({ getStatus }) {
+		function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
 			const [state, setState] = (0, react.useState)({ kind: "loading" });
-			(0, react.useEffect)(() => {
-				let alive = true;
-				const poll = () => {
-					getStatus().then((result) => {
-						if (!alive) return;
-						if (result.ok) setState({
-							kind: "status",
-							status: result.value
-						});
-						else setState({
-							kind: "error",
-							message: result.error.message
-						});
-					}, (reason) => {
-						if (!alive) return;
-						setState({
-							kind: "error",
-							message: reason instanceof Error ? reason.message : String(reason)
-						});
+			const [dialogOpen, setDialogOpen] = (0, react.useState)(false);
+			const [history, setHistory] = (0, react.useState)([]);
+			const [toggling, setToggling] = (0, react.useState)(false);
+			const [dialogError, setDialogError] = (0, react.useState)(void 0);
+			const alive = (0, react.useRef)(true);
+			const pollStatus = (0, react.useCallback)(() => {
+				getStatus().then((result) => {
+					if (!alive.current) return;
+					if (result.ok) setState({
+						kind: "status",
+						status: result.value
 					});
-				};
-				poll();
-				const timer = setInterval(poll, POLL_MS);
+					else setState({
+						kind: "error",
+						message: result.error.message
+					});
+				}, (reason) => {
+					if (!alive.current) return;
+					setState({
+						kind: "error",
+						message: reason instanceof Error ? reason.message : String(reason)
+					});
+				});
+			}, [getStatus]);
+			(0, react.useEffect)(() => {
+				alive.current = true;
+				pollStatus();
+				const timer = setInterval(pollStatus, POLL_MS);
 				return () => {
-					alive = false;
+					alive.current = false;
 					clearInterval(timer);
 				};
-			}, [getStatus]);
+			}, [pollStatus]);
+			(0, react.useEffect)(() => {
+				if (!dialogOpen) return;
+				let cancelled = false;
+				const refresh = () => {
+					getHistory().then((result) => {
+						if (cancelled) return;
+						if (result.ok) setHistory(result.value);
+						else setDialogError(result.error.message);
+					}, (reason) => {
+						if (cancelled) return;
+						setDialogError(reason instanceof Error ? reason.message : String(reason));
+					});
+				};
+				refresh();
+				const timer = setInterval(refresh, POLL_MS);
+				return () => {
+					cancelled = true;
+					clearInterval(timer);
+				};
+			}, [dialogOpen, getHistory]);
+			(0, react.useEffect)(() => {
+				if (!dialogOpen) return;
+				const onKeyDown = (e) => {
+					if (e.key === "Escape") setDialogOpen(false);
+				};
+				document.addEventListener("keydown", onKeyDown);
+				return () => document.removeEventListener("keydown", onKeyDown);
+			}, [dialogOpen]);
+			const toggle = (0, react.useCallback)(() => {
+				if (toggling) return;
+				const current = state.kind === "status" ? state.status.enabled : false;
+				setToggling(true);
+				setDialogError(void 0);
+				setEnabled(!current).then((result) => {
+					if (!alive.current) return;
+					setToggling(false);
+					if (result.ok) setState({
+						kind: "status",
+						status: result.value
+					});
+					else setDialogError(result.error.message);
+				}, (reason) => {
+					if (!alive.current) return;
+					setToggling(false);
+					setDialogError(reason instanceof Error ? reason.message : String(reason));
+				});
+			}, [
+				state,
+				toggling,
+				setEnabled
+			]);
 			let dot = "#9ca3af";
 			let label = "AA";
 			let title = "auto-approval";
@@ -110,10 +490,20 @@ window.__ModuleLoader__.load({
 				label = state.status.denials > 0 ? `AA ·${state.status.denials}` : "AA on";
 				title = describe(state.status);
 			}
-			return (0, react_jsx_runtime.jsxs)("span", {
+			const chip = (0, react_jsx_runtime.jsxs)("span", {
 				style: PILL,
 				title,
 				"aria-label": title,
+				role: "button",
+				tabIndex: 0,
+				"aria-haspopup": "dialog",
+				onClick: () => setDialogOpen(true),
+				onKeyDown: (e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						setDialogOpen(true);
+					}
+				},
 				children: [(0, react_jsx_runtime.jsx)("span", {
 					style: {
 						...DOT,
@@ -122,6 +512,36 @@ window.__ModuleLoader__.load({
 					"aria-hidden": true
 				}), label]
 			});
+			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+				label: title,
+				side: "bottom",
+				delayMs: 300,
+				children: chip
+			}), dialogOpen && state.kind === "status" && (0, react_dom.createPortal)((0, react_jsx_runtime.jsx)("div", {
+				style: OVERLAY,
+				onClick: () => setDialogOpen(false),
+				children: (0, react_jsx_runtime.jsxs)("div", {
+					style: DIALOG,
+					role: "dialog",
+					"aria-modal": "true",
+					"aria-label": "Auto-approval",
+					onClick: (e) => e.stopPropagation(),
+					children: [(0, react_jsx_runtime.jsx)(DialogContent, {
+						status: state.status,
+						history,
+						toggling,
+						onToggle: toggle,
+						onClose: () => setDialogOpen(false)
+					}), dialogError !== void 0 && (0, react_jsx_runtime.jsx)("div", {
+						style: {
+							padding: "0 16px 12px",
+							fontSize: 11,
+							color: "#ef4444"
+						},
+						children: dialogError
+					})]
+				})
+			}), document.body)] });
 		}
 		//#endregion
 		//#region ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
@@ -4125,15 +4545,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		*
 		* The upstream build generates this artifact from the Host FaceModel
 		* (`@deepseek-ai/dsh-typert-generator` → `typert.remote-client.js`); this
-		* standalone repo hand-writes it because the remote is a single method and
-		* the generator is a whole-workspace TypeScript analyzer.
+		* standalone repo hand-writes it because the remote is a small hand-curated
+		* surface and the generator is a whole-workspace TypeScript analyzer.
 		*
 		* Two halves must stay in lockstep with the host service
 		* (`@deepseek-ai/dsh-auto-approval/src/remote.ts`):
-		* - the wire schema (zod, strict) must parse exactly what
-		*   `AutoApprovalStatusService.getStatus` returns;
+		* - the wire schemas (zod, strict) must parse exactly what
+		*   `AutoApprovalStatusService` returns;
 		* - the `TypertRemoteMap`/`TypertRemoteScopeMap` declaration merges type
-		*   `ctx.remote.autoApprovalStatus.getStatus` on the client.
+		*   `ctx.remote.autoApprovalStatus.*` on the client.
 		*
 		* The `agent` parameter is a Typert lookup (`TypertLookupMap['agent']` =
 		* `TypertLookup<Agent, SessionId>`, registered by the core `agents` service),
@@ -4147,41 +4567,104 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			autoApproveTools: number().readonly(),
 			classifier: string().readonly(),
 			denials: number().readonly(),
-			paused: boolean().readonly()
+			paused: boolean().readonly(),
+			approvals: number().readonly(),
+			asks: number().readonly(),
+			totalDenials: number().readonly()
 		});
+		/** zod schema validating the host's `DecisionRecord` array at the wire boundary. */
+		const decisionRecordSchema = object({
+			time: string().readonly(),
+			tool: string().readonly(),
+			stage: string().readonly(),
+			decision: _enum([
+				"allow",
+				"deny",
+				"ask"
+			]).readonly(),
+			pattern: string().readonly().optional(),
+			detail: string().readonly().optional()
+		});
+		/** Agent lookup parameter shared by every remote method. */
+		const agentParameter = {
+			name: "agent",
+			wire: "agentId",
+			source: "lookup",
+			lookup: "agent",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+				schema: intersection(string(), unknown())
+			}
+		};
 		/**
 		* The generated Host-for-Client contribution, mounted by the client half via
 		* `ctx.remote.$mount(TYPERT_REMOTE)`.
 		*/
 		const TYPERT_REMOTE = {
 			package: "@deepseek-ai/dsh-auto-approval",
-			descriptors: [{
-				id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus",
-				service: "autoApprovalStatus",
-				namespace: "autoApprovalStatus",
-				method: "getStatus",
-				invocation: { kind: "direct" },
-				scope: {
-					context: "agent",
-					wire: "agentId"
-				},
-				parameters: [{
-					name: "agent",
-					wire: "agentId",
-					source: "lookup",
-					lookup: "agent",
-					codec: {
+			descriptors: [
+				{
+					id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus",
+					service: "autoApprovalStatus",
+					namespace: "autoApprovalStatus",
+					method: "getStatus",
+					invocation: { kind: "direct" },
+					scope: {
+						context: "agent",
+						wire: "agentId"
+					},
+					parameters: [agentParameter],
+					result: {
 						mode: "strict",
-						typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
-						schema: intersection(string(), unknown())
+						typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+						schema: statusSchema
 					}
-				}],
-				result: {
-					mode: "strict",
-					typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
-					schema: statusSchema
+				},
+				{
+					id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getHistory",
+					service: "autoApprovalStatus",
+					namespace: "autoApprovalStatus",
+					method: "getHistory",
+					invocation: { kind: "direct" },
+					scope: {
+						context: "agent",
+						wire: "agentId"
+					},
+					parameters: [agentParameter],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-auto-approval#DecisionRecord[]",
+						schema: array(decisionRecordSchema).readonly()
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/setEnabled",
+					service: "autoApprovalStatus",
+					namespace: "autoApprovalStatus",
+					method: "setEnabled",
+					invocation: { kind: "direct" },
+					scope: {
+						context: "agent",
+						wire: "agentId"
+					},
+					parameters: [agentParameter, {
+						name: "enabled",
+						wire: "enabled",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "boolean",
+							schema: boolean().readonly()
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+						schema: statusSchema
+					}
 				}
-			}]
+			]
 		};
 		//#endregion
 		//#region lib/types/client/index.js
@@ -4206,7 +4689,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				name: "conversation.input.left",
 				id: "auto-approval-status",
 				order: 0,
-				inject: (sessionId) => ({ getStatus: () => statusRemote.getStatus(sessionId) })
+				inject: (sessionId) => ({
+					getStatus: () => statusRemote.getStatus(sessionId),
+					getHistory: () => statusRemote.getHistory(sessionId),
+					setEnabled: (enabled) => statusRemote.setEnabled(sessionId, enabled)
+				})
 			}, AutoApprovalChip));
 		}
 		//#endregion

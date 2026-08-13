@@ -45,4 +45,5 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-scope@0.0.1-rc.5'
   - '@deepseek-ai/dsh-system-prompt@0.0.1-rc.5'
   - '@deepseek-ai/dsh-timeout@0.0.1-rc.5'
+  - '@deepseek-ai/dsh-client-ui-primitives@0.0.1-rc.5'
 strictPeerDependencies: false

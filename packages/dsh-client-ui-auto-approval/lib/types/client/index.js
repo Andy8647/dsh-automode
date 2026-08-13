@@ -24,6 +24,8 @@ export async function apply(ctx) {
         order: 0,
         inject: (sessionId) => ({
             getStatus: () => statusRemote.getStatus(sessionId),
+            getHistory: () => statusRemote.getHistory(sessionId),
+            setEnabled: (enabled) => statusRemote.setEnabled(sessionId, enabled),
         }),
     }, AutoApprovalChip));
 }

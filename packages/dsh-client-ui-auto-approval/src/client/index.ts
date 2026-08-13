@@ -1,9 +1,10 @@
 /**
- * auto-approval status chip plugin, browser half: contributes a status chip to
+ * auto-approval 状态 chip 插件，browser half：contributes a status chip to
  * the composer tool row's `conversation.input.left` list slot (the left group
  * beside the access-mode selector). The chip reads the host runtime state via
  * the mounted `autoApprovalStatus` remote — armed config summary, this turn's
- * deny count, and the paused state.
+ * deny count, cumulative stats, and the recent-decision history — and offers a
+ * click-through dialog (toggle + decision table).
  *
  * Remote (not projection) on purpose: the chip needs live host state, and
  * projection values must fold from session events — writing custom events
@@ -15,20 +16,26 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the ui-conversation SlotMap merge (the input.left seat + SessionStandardProps).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { AutoApprovalChip } from './AutoApprovalChip.tsx'
-import type { AutoApprovalStatus } from './remote.ts'
+import type { AutoApprovalStatus, DecisionRecord } from './remote.ts'
 import { TYPERT_REMOTE } from './remote.ts'
 
-export type { AutoApprovalStatus } from './remote.ts'
+export type { AutoApprovalStatus, DecisionRecord } from './remote.ts'
 
 /** Injected business face of the composer status chip. */
 export interface AutoApprovalChipInjected {
   /** Read the current auto-approval status for this session's agent. */
   getStatus: () => Promise<RemoteResult<AutoApprovalStatus>>
+  /** Read the recent auto-approval decisions for this session's agent. */
+  getHistory: () => Promise<RemoteResult<DecisionRecord[]>>
+  /** Toggle auto-approval on/off (persisted via host settings when available). */
+  setEnabled: (enabled: boolean) => Promise<RemoteResult<AutoApprovalStatus>>
 }
 
 /** The mounted `remote.autoApprovalStatus` namespace service (resolved via the global store). */
 interface AutoApprovalRemoteNamespace {
   getStatus: (agentId: SessionId) => Promise<RemoteResult<AutoApprovalStatus>>
+  getHistory: (agentId: SessionId) => Promise<RemoteResult<DecisionRecord[]>>
+  setEnabled: (agentId: SessionId, enabled: boolean) => Promise<RemoteResult<AutoApprovalStatus>>
 }
 
 /** Required services: the seat's slot registry and the Client Remote mount. */
@@ -57,6 +64,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
     order: 0,
     inject: (sessionId: SessionId): AutoApprovalChipInjected => ({
       getStatus: () => statusRemote.getStatus(sessionId),
+      getHistory: () => statusRemote.getHistory(sessionId),
+      setEnabled: (enabled: boolean) => statusRemote.setEnabled(sessionId, enabled),
     }),
   }, AutoApprovalChip))
 }

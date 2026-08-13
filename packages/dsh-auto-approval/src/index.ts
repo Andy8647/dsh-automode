@@ -29,9 +29,10 @@ import { ASK_REASON, createDenyGuard, DENY_REASON, extractMatchableText, hasEsca
 import { audit, auditArmed } from './audit.ts'
 import type { AutoApprovalDecisionEvent, DecisionStage } from './audit.ts'
 import { AutoApprovalStatusService } from './remote.ts'
-import type { StatusReader } from './remote.ts'
+import type { EnabledWriter, HistoryReader, StatusReader } from './remote.ts'
 import { remoteManifest } from './remote-manifest.ts'
 import { DenialTracker } from './tracker.ts'
+import { DecisionHistory } from './history.ts'
 
 export const name = 'auto-approval'
 
@@ -92,28 +93,77 @@ export function apply(ctx: Context, config: Config = {}): void {
   let current: () => Config = () => config
   let resolved: ResolvedConfig = resolveConfig(config)
   let tracker = new DenialTracker(resolved.consecutiveDenyLimit)
+  const history = new DecisionHistory()
   const logger = ctx.logger('auto-approval')
+
+  /**
+   * 运行时 enabled override：`setEnabled` 写 settings 失败（settings 服务缺席 /
+   * 只读 provider）时的兜底，只影响当前进程。成功写 settings 时清空，让
+   * settings 值成为唯一权威（重启后保持）。
+   */
+  let runtimeEnabled: boolean | undefined
+
+  /** settings provider 引用（兄弟 entry 服务，用 ctx.inject 等就绪后保存）。 */
+  let settingsProvider: { readonly writable?: boolean; update(ns: unknown, patch: object): Promise<void> } | undefined
+  ctx.inject(['settings'], (sctx) => {
+    settingsProvider = sctx.get('settings') as typeof settingsProvider
+  })
+
+  /** 实际生效的 enabled：运行时 override 优先，否则配置值。 */
+  const effectiveEnabled = (): boolean => runtimeEnabled ?? resolved.enabled
 
   /** 审计入口：文件日志始终写；session 事件按 `auditSessionEvents` 开关（默认关）
    * ——08-12 final 起 session 读取对未声明事件类型 fail-closed（KNOWN_SESSION_EVENT_TYPES
-   * 白名单 + append() 无 ignorable 通道），写 session 事件会使该 session 重启后无法打开。 */
-  const auditDecision = (ctx: Context, agent: Agent | undefined, event: AutoApprovalDecisionEvent): void =>
+   * 白名单 + append() 无 ignorable 通道），写 session 事件会使该 session 重启后无法打开。
+   * 同时把决策记入内存 history（供 remote getHistory / 累计统计），best-effort 不阻塞。 */
+  const auditDecision = (ctx: Context, agent: Agent | undefined, event: AutoApprovalDecisionEvent): void => {
     audit(ctx, agent, event, resolved.auditSessionEvents ?? false)
+    history.record(agent, event)
+  }
 
-  /** remote 状态读取：读 resolved 配置摘要 + tracker 的 per-agent 运行态，不落 session 事件。 */
-  const readStatus: StatusReader = (agent) => ({
-    enabled: resolved.enabled,
-    denyPatterns: resolved.deny.length,
-    askPatterns: resolved.ask.length,
-    autoApproveTools: resolved.autoApproveTools.size,
-    classifier: resolved.classifier === undefined
-      ? 'disabled'
-      : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
-    denials: tracker.denials(agent),
-    paused: tracker.isPaused(agent),
-  })
+  /** remote 状态读取：读 resolved 配置摘要 + tracker 的 per-agent 运行态 + history 累计统计，不落 session 事件。 */
+  const readStatus: StatusReader = (agent) => {
+    const counts = history.counts(agent)
+    return {
+      enabled: effectiveEnabled(),
+      denyPatterns: resolved.deny.length,
+      askPatterns: resolved.ask.length,
+      autoApproveTools: resolved.autoApproveTools.size,
+      classifier: resolved.classifier === undefined
+        ? 'disabled'
+        : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
+      denials: tracker.denials(agent),
+      paused: tracker.isPaused(agent),
+      approvals: counts.approvals,
+      asks: counts.asks,
+      totalDenials: counts.denials,
+    }
+  }
+
+  /** remote 最近决策读取：直接读内存 history（无 agent 返回空数组）。 */
+  const readHistory: HistoryReader = (agent) => history.records(agent)
+
+  /**
+   * remote 开关写入：优先持久化到 settings（热生效且重启后保持）；settings
+   * 缺席或只读时降级为进程内 override（仅本次运行）。失败不影响返回——
+   * 调用方拿返回的 status 决定 UI 显示。
+   */
+  const writeEnabled: EnabledWriter = async (enabled) => {
+    const provider = settingsProvider
+    if (provider !== undefined && provider.writable !== false) {
+      try {
+        await provider.update(NS, { enabled })
+        runtimeEnabled = undefined
+        return
+      } catch (error) {
+        logger.warn(`setEnabled: settings update failed (${error instanceof Error ? error.message : String(error)}); using runtime override`)
+      }
+    }
+    runtimeEnabled = enabled
+  }
+
   // 注册 remote 服务：Cordis Service 构造器自 provide，并绑定 Typert Gateway。
-  new AutoApprovalStatusService(ctx, readStatus)
+  new AutoApprovalStatusService(ctx, { read: readStatus, history: readHistory, setEnabled: writeEnabled })
 
   // 把严格描述符注册进运行时的 typert registry（strict dispatch）。
   // 不能走 SRC fallback（`@Remote` marker 的 WeakMap 是模块级状态，独立
@@ -175,13 +225,14 @@ export function apply(ctx: Context, config: Config = {}): void {
   // 只有全局 store（`ctx.get`）能解析。
   const tools = ctx.get('tools') as { guard: (guard: ToolGuard) => () => void } | undefined
   if (tools !== undefined) {
-    tools.guard(createDenyGuard(() => resolved))
+    // guard 读 effective enabled：toggle 关闭时 L0 硬底线同步旁路。
+    tools.guard(createDenyGuard(() => ({ ...resolved, enabled: effectiveEnabled() })))
   } else {
     logger.warn('ctx.tools is not available; L0 deny guard NOT registered (pre-execute listener still active)')
   }
 
   ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
-    if (!resolved.enabled) return next()
+    if (!effectiveEnabled()) return next()
     const { agent, callId } = callFacts(exec)
     const text = extractMatchableText(exec.arguments)
 

@@ -465,8 +465,9 @@ function audit(ctx, agent, event, sessionEvents) {
 //#region lib/types/remote.js
 /**
 * host→browser 状态通道：把 auto-approval 的"运行态"（armed 配置摘要 +
-* 当前 agent 本 turn 的 deny 计数 / 暂停状态）通过 Typert remote 方法暴露
-* 给浏览器伴侣包，供权限选择器旁的 chip 读取。
+* 当前 agent 本 turn 的 deny 计数 / 暂停状态 / 累计决策统计 + 最近决策
+* 历史）通过 Typert remote 方法暴露给浏览器伴侣包，供权限选择器旁的
+* chip 读取（hover 统计 + 点击弹窗表格）。
 *
 * 选 remote 而非投影：chip 要的是运行态，投影必须从 session 事件 fold——
 * 写自定义事件会踩 08-12 final 的 `KNOWN_SESSION_EVENT_TYPES` 白名单
@@ -475,6 +476,8 @@ function audit(ctx, agent, event, sessionEvents) {
 *
 * `@Remote` 方法里的 `Agent` 参数走 typert lookup：client 侧传 sessionId，
 * gateway 自动解析成 Agent 对象（与 `commands.list(agent)` 同机制）。
+* `setEnabled` 是 async：写入 settings 持久化（失败 fallback 运行时
+* override），gateway 的 strict dispatch 会 await 方法返回值。
 * @module @deepseek-ai/dsh-auto-approval/remote
 */
 var __runInitializers = function(thisArg, initializers, value) {
@@ -519,16 +522,21 @@ var __esDecorate = function(ctor, descriptorIn, decorators, contextIn, initializ
 };
 /**
 * auto-approval 状态 remote 服务。注册为 Cordis 服务并绑定 Typert Gateway，
-* client 侧通过 `ctx.remote.autoApprovalStatus.getStatus(sessionId)` 调用。
+* client 侧通过 `ctx.remote.autoApprovalStatus.getStatus(sessionId)` /
+* `getHistory(sessionId)` / `setEnabled(sessionId, enabled)` 调用。
 */
 let AutoApprovalStatusService = (() => {
 	let _classSuper = TypertRemoteService;
 	let _instanceExtraInitializers = [];
 	let _getStatus_decorators;
+	let _getHistory_decorators;
+	let _setEnabled_decorators;
 	return class AutoApprovalStatusService extends _classSuper {
 		static {
 			const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
 			_getStatus_decorators = [Remote];
+			_getHistory_decorators = [Remote];
+			_setEnabled_decorators = [Remote];
 			__esDecorate(this, null, _getStatus_decorators, {
 				kind: "method",
 				name: "getStatus",
@@ -540,6 +548,28 @@ let AutoApprovalStatusService = (() => {
 				},
 				metadata: _metadata
 			}, null, _instanceExtraInitializers);
+			__esDecorate(this, null, _getHistory_decorators, {
+				kind: "method",
+				name: "getHistory",
+				static: false,
+				private: false,
+				access: {
+					has: (obj) => "getHistory" in obj,
+					get: (obj) => obj.getHistory
+				},
+				metadata: _metadata
+			}, null, _instanceExtraInitializers);
+			__esDecorate(this, null, _setEnabled_decorators, {
+				kind: "method",
+				name: "setEnabled",
+				static: false,
+				private: false,
+				access: {
+					has: (obj) => "setEnabled" in obj,
+					get: (obj) => obj.setEnabled
+				},
+				metadata: _metadata
+			}, null, _instanceExtraInitializers);
 			if (_metadata) Object.defineProperty(this, Symbol.metadata, {
 				enumerable: true,
 				configurable: true,
@@ -547,14 +577,23 @@ let AutoApprovalStatusService = (() => {
 				value: _metadata
 			});
 		}
-		read = __runInitializers(this, _instanceExtraInitializers);
-		constructor(ctx, read) {
+		hooks = __runInitializers(this, _instanceExtraInitializers);
+		constructor(ctx, hooks) {
 			super(ctx, "autoApprovalStatus");
-			this.read = read;
+			this.hooks = hooks;
 		}
-		/** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/paused 归零）。 */
+		/** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/paused/统计归零）。 */
 		getStatus(agent) {
-			return this.read(agent);
+			return this.hooks.read(agent);
+		}
+		/** 当前 agent 的最近决策历史（新→旧，最多 100 条；无 agent 返回空数组）。 */
+		getHistory(agent) {
+			return [...this.hooks.history(agent)];
+		}
+		/** 开关 auto-approval（写 settings 持久化；settings 缺席时运行时 override）。 */
+		async setEnabled(agent, enabled) {
+			await this.hooks.setEnabled(enabled);
+			return this.hooks.read(agent);
 		}
 	};
 })();
@@ -565,8 +604,8 @@ let AutoApprovalStatusService = (() => {
 *
 * The upstream build generates this artifact (`typert.host.js`) via
 * `@deepseek-ai/dsh-typert-generator`; this standalone repo hand-writes it
-* because the remote is a single method and the generator is a whole-workspace
-* analyzer.
+* because the remote is a small hand-curated surface and the generator is a
+* whole-workspace analyzer.
 *
 * WHY a strict manifest instead of SRC fallback: the gateway's SRC fallback
 * discovers `@Remote` methods through the `remoteMethods` marker WeakMap — a
@@ -580,7 +619,7 @@ let AutoApprovalStatusService = (() => {
 * module state.
 *
 * The wire schema MUST stay in lockstep with:
-* - `AutoApprovalStatusService.getStatus` (this package's `remote.ts`), and
+* - `AutoApprovalStatusService` methods (this package's `remote.ts`), and
 * - the client companion's `@deepseek-ai/dsh-client-ui-auto-approval/src/client/remote.ts`.
 */
 /** Wire snapshot of the auto-approval runtime state (mirror of `AutoApprovalStatus`). */
@@ -591,11 +630,39 @@ const statusSchema = z$1.object({
 	autoApproveTools: z$1.number().readonly(),
 	classifier: z$1.string().readonly(),
 	denials: z$1.number().readonly(),
-	paused: z$1.boolean().readonly()
+	paused: z$1.boolean().readonly(),
+	approvals: z$1.number().readonly(),
+	asks: z$1.number().readonly(),
+	totalDenials: z$1.number().readonly()
 });
+/** Wire record of one auto-approval decision (mirror of `DecisionRecord`). */
+const decisionRecordSchema = z$1.object({
+	time: z$1.string().readonly(),
+	tool: z$1.string().readonly(),
+	stage: z$1.string().readonly(),
+	decision: z$1.enum([
+		"allow",
+		"deny",
+		"ask"
+	]).readonly(),
+	pattern: z$1.string().readonly().optional(),
+	detail: z$1.string().readonly().optional()
+});
+/** Agent lookup parameter shared by every remote method. */
+const agentParameter = {
+	name: "agent",
+	wire: "agentId",
+	source: "lookup",
+	lookup: "agent",
+	codec: {
+		mode: "strict",
+		typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+		schema: z$1.intersection(z$1.string(), z$1.unknown())
+	}
+};
 /**
 * Host-face Typert contribution, registered into `ctx.typert` so the gateway
-* serves `autoApprovalStatus/getStatus` from the strict descriptor table.
+* serves `autoApprovalStatus/*` from the strict descriptor table.
 * `schemas`/`model` are empty: the registry only consumes them for reflection
 * tooling, and this plugin exposes no public schemas or model surface.
 */
@@ -608,33 +675,68 @@ const remoteManifest = {
 		events: [],
 		objects: []
 	},
-	invocations: [{
-		id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus",
-		service: "autoApprovalStatus",
-		namespace: "autoApprovalStatus",
-		method: "getStatus",
-		invocation: { kind: "direct" },
-		scope: {
-			context: "agent",
-			wire: "agentId"
-		},
-		parameters: [{
-			name: "agent",
-			wire: "agentId",
-			source: "lookup",
-			lookup: "agent",
-			codec: {
+	invocations: [
+		{
+			id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus",
+			service: "autoApprovalStatus",
+			namespace: "autoApprovalStatus",
+			method: "getStatus",
+			invocation: { kind: "direct" },
+			scope: {
+				context: "agent",
+				wire: "agentId"
+			},
+			parameters: [agentParameter],
+			result: {
 				mode: "strict",
-				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
-				schema: z$1.intersection(z$1.string(), z$1.unknown())
+				typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+				schema: statusSchema
 			}
-		}],
-		result: {
-			mode: "strict",
-			typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
-			schema: statusSchema
+		},
+		{
+			id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getHistory",
+			service: "autoApprovalStatus",
+			namespace: "autoApprovalStatus",
+			method: "getHistory",
+			invocation: { kind: "direct" },
+			scope: {
+				context: "agent",
+				wire: "agentId"
+			},
+			parameters: [agentParameter],
+			result: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-auto-approval#DecisionRecord[]",
+				schema: z$1.array(decisionRecordSchema).readonly()
+			}
+		},
+		{
+			id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/setEnabled",
+			service: "autoApprovalStatus",
+			namespace: "autoApprovalStatus",
+			method: "setEnabled",
+			invocation: { kind: "direct" },
+			scope: {
+				context: "agent",
+				wire: "agentId"
+			},
+			parameters: [agentParameter, {
+				name: "enabled",
+				wire: "enabled",
+				source: "json",
+				codec: {
+					mode: "strict",
+					typeSymbol: "boolean",
+					schema: z$1.boolean().readonly()
+				}
+			}],
+			result: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+				schema: statusSchema
+			}
 		}
-	}]
+	]
 };
 //#endregion
 //#region lib/types/tracker.js
@@ -697,6 +799,83 @@ var DenialTracker = class {
 	recordDenial(agent) {
 		if (agent === void 0) return;
 		this.sync(agent).denials += 1;
+	}
+};
+//#endregion
+//#region lib/types/history.js
+/**
+* 决策历史环形缓冲 + 累计计数（per agent）。
+*
+* 给 client 伴侣包的弹窗表格提供最近决策（时间 / 工具 / 阶段 / 结论 /
+* 命中的 pattern），给 chip 的 hover tooltip 提供累计统计
+* （approvals / denials / asks）。
+*
+* 与 tracker 的分工：tracker 只算「本 turn 连续 deny」（防失控用），
+* 这里算「插件加载以来的累计决策」。无 agent 的调用不记录（与 tracker
+* fail-closed 一致）。
+* @module @deepseek-ai/dsh-auto-approval/history
+*/
+/**
+* per-agent 决策历史。记录 append-only，超容量丢最旧的（环形语义）；
+* 累计计数不受容量截断影响（记录被丢但计数保留）。
+*/
+var DecisionHistory = class {
+	capacity;
+	states = /* @__PURE__ */ new WeakMap();
+	constructor(capacity = 100) {
+		this.capacity = capacity;
+	}
+	/** 记录一条决策。无 agent（无 session）的调用不记录、不计数。 */
+	record(agent, event) {
+		if (agent === void 0) return;
+		let state = this.states.get(agent);
+		if (state === void 0) {
+			state = {
+				records: [],
+				counts: {
+					approvals: 0,
+					denials: 0,
+					asks: 0
+				}
+			};
+			this.states.set(agent, state);
+		}
+		state.records.push({
+			time: (/* @__PURE__ */ new Date()).toISOString(),
+			...event
+		});
+		if (state.records.length > this.capacity) state.records.shift();
+		switch (event.decision) {
+			case "allow":
+				state.counts.approvals += 1;
+				break;
+			case "deny":
+				state.counts.denials += 1;
+				break;
+			case "ask": state.counts.asks += 1;
+		}
+	}
+	/** 该 agent 的最近决策（新→旧，最多 capacity 条）。无 agent 返回空数组。 */
+	records(agent) {
+		if (agent === void 0) return [];
+		const records = this.states.get(agent)?.records;
+		if (records === void 0) return [];
+		return [...records].reverse();
+	}
+	/** 该 agent 的累计统计。无 agent 返回全零。 */
+	counts(agent) {
+		if (agent === void 0) return {
+			approvals: 0,
+			denials: 0,
+			asks: 0
+		};
+		const state = this.states.get(agent);
+		if (state === void 0) return {
+			approvals: 0,
+			denials: 0,
+			asks: 0
+		};
+		return state.counts;
 	}
 };
 //#endregion
@@ -765,22 +944,68 @@ function apply(ctx, config = {}) {
 	let current = () => config;
 	let resolved = resolveConfig(config);
 	let tracker = new DenialTracker(resolved.consecutiveDenyLimit);
+	const history = new DecisionHistory();
 	const logger = ctx.logger("auto-approval");
+	/**
+	* 运行时 enabled override：`setEnabled` 写 settings 失败（settings 服务缺席 /
+	* 只读 provider）时的兜底，只影响当前进程。成功写 settings 时清空，让
+	* settings 值成为唯一权威（重启后保持）。
+	*/
+	let runtimeEnabled;
+	/** settings provider 引用（兄弟 entry 服务，用 ctx.inject 等就绪后保存）。 */
+	let settingsProvider;
+	ctx.inject(["settings"], (sctx) => {
+		settingsProvider = sctx.get("settings");
+	});
+	/** 实际生效的 enabled：运行时 override 优先，否则配置值。 */
+	const effectiveEnabled = () => runtimeEnabled ?? resolved.enabled;
 	/** 审计入口：文件日志始终写；session 事件按 `auditSessionEvents` 开关（默认关）
 	* ——08-12 final 起 session 读取对未声明事件类型 fail-closed（KNOWN_SESSION_EVENT_TYPES
-	* 白名单 + append() 无 ignorable 通道），写 session 事件会使该 session 重启后无法打开。 */
-	const auditDecision = (ctx, agent, event) => audit(ctx, agent, event, resolved.auditSessionEvents ?? false);
-	/** remote 状态读取：读 resolved 配置摘要 + tracker 的 per-agent 运行态，不落 session 事件。 */
-	const readStatus = (agent) => ({
-		enabled: resolved.enabled,
-		denyPatterns: resolved.deny.length,
-		askPatterns: resolved.ask.length,
-		autoApproveTools: resolved.autoApproveTools.size,
-		classifier: resolved.classifier === void 0 ? "disabled" : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
-		denials: tracker.denials(agent),
-		paused: tracker.isPaused(agent)
+	* 白名单 + append() 无 ignorable 通道），写 session 事件会使该 session 重启后无法打开。
+	* 同时把决策记入内存 history（供 remote getHistory / 累计统计），best-effort 不阻塞。 */
+	const auditDecision = (ctx, agent, event) => {
+		audit(ctx, agent, event, resolved.auditSessionEvents ?? false);
+		history.record(agent, event);
+	};
+	/** remote 状态读取：读 resolved 配置摘要 + tracker 的 per-agent 运行态 + history 累计统计，不落 session 事件。 */
+	const readStatus = (agent) => {
+		const counts = history.counts(agent);
+		return {
+			enabled: effectiveEnabled(),
+			denyPatterns: resolved.deny.length,
+			askPatterns: resolved.ask.length,
+			autoApproveTools: resolved.autoApproveTools.size,
+			classifier: resolved.classifier === void 0 ? "disabled" : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
+			denials: tracker.denials(agent),
+			paused: tracker.isPaused(agent),
+			approvals: counts.approvals,
+			asks: counts.asks,
+			totalDenials: counts.denials
+		};
+	};
+	/** remote 最近决策读取：直接读内存 history（无 agent 返回空数组）。 */
+	const readHistory = (agent) => history.records(agent);
+	/**
+	* remote 开关写入：优先持久化到 settings（热生效且重启后保持）；settings
+	* 缺席或只读时降级为进程内 override（仅本次运行）。失败不影响返回——
+	* 调用方拿返回的 status 决定 UI 显示。
+	*/
+	const writeEnabled = async (enabled) => {
+		const provider = settingsProvider;
+		if (provider !== void 0 && provider.writable !== false) try {
+			await provider.update(NS, { enabled });
+			runtimeEnabled = void 0;
+			return;
+		} catch (error) {
+			logger.warn(`setEnabled: settings update failed (${error instanceof Error ? error.message : String(error)}); using runtime override`);
+		}
+		runtimeEnabled = enabled;
+	};
+	new AutoApprovalStatusService(ctx, {
+		read: readStatus,
+		history: readHistory,
+		setEnabled: writeEnabled
 	});
-	new AutoApprovalStatusService(ctx, readStatus);
 	ctx.inject(["typert"], (typertCtx) => {
 		typertCtx.get("typert").register(remoteManifest);
 	});
@@ -810,10 +1035,13 @@ function apply(ctx, config = {}) {
 		}
 	});
 	const tools = ctx.get("tools");
-	if (tools !== void 0) tools.guard(createDenyGuard(() => resolved));
+	if (tools !== void 0) tools.guard(createDenyGuard(() => ({
+		...resolved,
+		enabled: effectiveEnabled()
+	})));
 	else logger.warn("ctx.tools is not available; L0 deny guard NOT registered (pre-execute listener still active)");
 	ctx.on("tools/pre-execute", async (exec, next) => {
-		if (!resolved.enabled) return next();
+		if (!effectiveEnabled()) return next();
 		const { agent, callId } = callFacts(exec);
 		const text = extractMatchableText(exec.arguments);
 		if (text !== void 0) {

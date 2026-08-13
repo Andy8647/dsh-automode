@@ -3,8 +3,8 @@
  *
  * The upstream build generates this artifact (`typert.host.js`) via
  * `@deepseek-ai/dsh-typert-generator`; this standalone repo hand-writes it
- * because the remote is a single method and the generator is a whole-workspace
- * analyzer.
+ * because the remote is a small hand-curated surface and the generator is a
+ * whole-workspace analyzer.
  *
  * WHY a strict manifest instead of SRC fallback: the gateway's SRC fallback
  * discovers `@Remote` methods through the `remoteMethods` marker WeakMap — a
@@ -18,7 +18,7 @@
  * module state.
  *
  * The wire schema MUST stay in lockstep with:
- * - `AutoApprovalStatusService.getStatus` (this package's `remote.ts`), and
+ * - `AutoApprovalStatusService` methods (this package's `remote.ts`), and
  * - the client companion's `@deepseek-ai/dsh-client-ui-auto-approval/src/client/remote.ts`.
  */
 import { z } from 'zod'
@@ -33,42 +33,98 @@ const statusSchema = z.object({
   classifier: z.string().readonly(),
   denials: z.number().readonly(),
   paused: z.boolean().readonly(),
+  approvals: z.number().readonly(),
+  asks: z.number().readonly(),
+  totalDenials: z.number().readonly(),
+})
+
+/** Wire record of one auto-approval decision (mirror of `DecisionRecord`). */
+const decisionRecordSchema = z.object({
+  time: z.string().readonly(),
+  tool: z.string().readonly(),
+  stage: z.string().readonly(),
+  decision: z.enum(['allow', 'deny', 'ask']).readonly(),
+  pattern: z.string().readonly().optional(),
+  detail: z.string().readonly().optional(),
 })
 
 /** Wire identity of the `agent` lookup parameter (SessionId, a branded string). */
 const sessionIdSchema = z.intersection(z.string(), z.unknown())
 
-/** The one Remote invocation, hand-written to match the generated descriptor shape. */
-const descriptor: InvocationDescriptor = {
-  id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus',
-  service: 'autoApprovalStatus',
-  namespace: 'autoApprovalStatus',
-  method: 'getStatus',
-  invocation: { kind: 'direct' },
-  scope: { context: 'agent', wire: 'agentId' },
-  parameters: [
-    {
-      name: 'agent',
-      wire: 'agentId',
-      source: 'lookup',
-      lookup: 'agent',
-      codec: {
-        mode: 'strict',
-        typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
-        schema: sessionIdSchema,
-      },
-    },
-  ],
-  result: {
+/** Agent lookup parameter shared by every remote method. */
+const agentParameter = {
+  name: 'agent',
+  wire: 'agentId',
+  source: 'lookup',
+  lookup: 'agent',
+  codec: {
     mode: 'strict',
-    typeSymbol: '@deepseek-ai/dsh-auto-approval#AutoApprovalStatus',
-    schema: statusSchema,
+    typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
+    schema: sessionIdSchema,
   },
-}
+} as const
+
+/** The three Remote invocations, hand-written to match the generated descriptor shape. */
+const descriptors: InvocationDescriptor[] = [
+  {
+    id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus',
+    service: 'autoApprovalStatus',
+    namespace: 'autoApprovalStatus',
+    method: 'getStatus',
+    invocation: { kind: 'direct' },
+    scope: { context: 'agent', wire: 'agentId' },
+    parameters: [agentParameter],
+    result: {
+      mode: 'strict',
+      typeSymbol: '@deepseek-ai/dsh-auto-approval#AutoApprovalStatus',
+      schema: statusSchema,
+    },
+  },
+  {
+    id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getHistory',
+    service: 'autoApprovalStatus',
+    namespace: 'autoApprovalStatus',
+    method: 'getHistory',
+    invocation: { kind: 'direct' },
+    scope: { context: 'agent', wire: 'agentId' },
+    parameters: [agentParameter],
+    result: {
+      mode: 'strict',
+      typeSymbol: '@deepseek-ai/dsh-auto-approval#DecisionRecord[]',
+      schema: z.array(decisionRecordSchema).readonly(),
+    },
+  },
+  {
+    id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/setEnabled',
+    service: 'autoApprovalStatus',
+    namespace: 'autoApprovalStatus',
+    method: 'setEnabled',
+    invocation: { kind: 'direct' },
+    scope: { context: 'agent', wire: 'agentId' },
+    parameters: [
+      agentParameter,
+      {
+        name: 'enabled',
+        wire: 'enabled',
+        source: 'json',
+        codec: {
+          mode: 'strict',
+          typeSymbol: 'boolean',
+          schema: z.boolean().readonly(),
+        },
+      },
+    ],
+    result: {
+      mode: 'strict',
+      typeSymbol: '@deepseek-ai/dsh-auto-approval#AutoApprovalStatus',
+      schema: statusSchema,
+    },
+  },
+]
 
 /**
  * Host-face Typert contribution, registered into `ctx.typert` so the gateway
- * serves `autoApprovalStatus/getStatus` from the strict descriptor table.
+ * serves `autoApprovalStatus/*` from the strict descriptor table.
  * `schemas`/`model` are empty: the registry only consumes them for reflection
  * tooling, and this plugin exposes no public schemas or model surface.
  */
@@ -77,5 +133,5 @@ export const remoteManifest = {
   face: 'host',
   schemas: [],
   model: { services: [], events: [], objects: [] },
-  invocations: [descriptor],
+  invocations: descriptors,
 }
