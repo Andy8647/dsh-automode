@@ -54,6 +54,15 @@ const BG_LAYER_2 = 'var(--dsw-alias-bg-layer-2)'
 const BG_LAYER_3 = 'var(--dsw-alias-bg-layer-3)'
 const MONO_FONT = 'var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)'
 
+/**
+ * Width override for the official Modal: the figma dialog is min(380px, 100%),
+ * which cramps the toggle row (the "Turn off" label wraps) and truncates the
+ * decision table. We keep every official behavior (mask, blur, Escape, portal,
+ * aria) and only widen the card via a class injected below — no !important on
+ * layout-critical properties, just the dialog width.
+ */
+const DIALOG_WIDTH_CSS = '.aa-modal-wide { width: min(660px, 100%) !important; }'
+
 /* ------------------------------------------------------------------ */
 /* Text helpers                                                        */
 /* ------------------------------------------------------------------ */
@@ -87,9 +96,9 @@ function describe(status: AutoApprovalStatus): string {
 /* ------------------------------------------------------------------ */
 
 const CELL: React.CSSProperties = {
-  padding: '6px 8px',
-  fontSize: 11,
-  lineHeight: '16px',
+  padding: '8px 10px',
+  fontSize: 12,
+  lineHeight: '18px',
   textAlign: 'left',
   verticalAlign: 'top',
 }
@@ -123,13 +132,13 @@ function DecisionRow({ record }: { readonly record: DecisionRecord }): ReactNode
       <td style={{ ...CELL, whiteSpace: 'nowrap', color: LABEL_CAPTION, fontFamily: MONO_FONT }}>{timeText}</td>
       <td style={{ ...CELL, whiteSpace: 'nowrap', color: LABEL_PRIMARY, fontFamily: MONO_FONT }}>{record.tool}</td>
       <td style={{
-        ...CELL, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+        ...CELL, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
       }} title={record.stage}>
         {record.stage}
       </td>
       <td style={CELL}><VerdictBadge decision={record.decision} /></td>
       <td style={{
-        ...CELL, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+        ...CELL, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
       }} title={detail}>
         {detail}
       </td>
@@ -195,6 +204,7 @@ function DialogContent({
           size="sm"
           disabled={toggling}
           onClick={onToggle}
+          style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
         >
           {status.enabled ? 'Turn off' : 'Turn on'}
         </Button>
@@ -372,6 +382,8 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
 
   return (
     <>
+      {/* One-time global width override for the official Modal dialog. */}
+      <style>{DIALOG_WIDTH_CSS}</style>
       {/*
        * The Tooltip anchor must be a host element: Tooltip attaches its ref
        * via cloneElement, and the official Pill is a function component
@@ -390,6 +402,7 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         title="Auto-approval"
+        className="aa-modal-wide"
         {...state.kind === 'status' ? { description: summaryLine(state.status) } : {}}
       >
         {state.kind === 'status'

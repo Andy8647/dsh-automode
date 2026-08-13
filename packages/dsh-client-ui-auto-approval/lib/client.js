@@ -41,6 +41,14 @@ window.__ModuleLoader__.load({
 		const BG_LAYER_2 = "var(--dsw-alias-bg-layer-2)";
 		const BG_LAYER_3 = "var(--dsw-alias-bg-layer-3)";
 		const MONO_FONT = "var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)";
+		/**
+		* Width override for the official Modal: the figma dialog is min(380px, 100%),
+		* which cramps the toggle row (the "Turn off" label wraps) and truncates the
+		* decision table. We keep every official behavior (mask, blur, Escape, portal,
+		* aria) and only widen the card via a class injected below — no !important on
+		* layout-critical properties, just the dialog width.
+		*/
+		const DIALOG_WIDTH_CSS = ".aa-modal-wide { width: min(660px, 100%) !important; }";
 		/** Cumulative counts as a compact "✓ n · ✗ n · ? n" line for the tooltip. */
 		function countLine(status) {
 			return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied · ? ${status.asks} asked`;
@@ -62,9 +70,9 @@ window.__ModuleLoader__.load({
 			return `auto-approval armed — ${parts.join(" · ")}`;
 		}
 		const CELL = {
-			padding: "6px 8px",
-			fontSize: 11,
-			lineHeight: "16px",
+			padding: "8px 10px",
+			fontSize: 12,
+			lineHeight: "18px",
 			textAlign: "left",
 			verticalAlign: "top"
 		};
@@ -121,7 +129,7 @@ window.__ModuleLoader__.load({
 					(0, react_jsx_runtime.jsx)("td", {
 						style: {
 							...CELL,
-							maxWidth: 92,
+							maxWidth: 130,
 							overflow: "hidden",
 							textOverflow: "ellipsis",
 							whiteSpace: "nowrap",
@@ -137,7 +145,7 @@ window.__ModuleLoader__.load({
 					(0, react_jsx_runtime.jsx)("td", {
 						style: {
 							...CELL,
-							maxWidth: 120,
+							maxWidth: 220,
 							overflow: "hidden",
 							textOverflow: "ellipsis",
 							whiteSpace: "nowrap",
@@ -213,6 +221,10 @@ window.__ModuleLoader__.load({
 						size: "sm",
 						disabled: toggling,
 						onClick: onToggle,
+						style: {
+							flexShrink: 0,
+							whiteSpace: "nowrap"
+						},
 						children: status.enabled ? "Turn off" : "Turn on"
 					})]
 				}),
@@ -429,48 +441,53 @@ window.__ModuleLoader__.load({
 				label = state.status.denials > 0 ? `AA ·${state.status.denials}` : "AA on";
 				title = describe(state.status);
 			}
-			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
-				label: title,
-				side: "top",
-				delayMs: 300,
-				children: (0, react_jsx_runtime.jsx)("span", {
-					style: { display: "inline-flex" },
-					children: (0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.Pill, {
-						onClick: () => setDialogOpen(true),
-						"aria-label": title,
-						"aria-haspopup": "dialog",
-						children: [(0, react_jsx_runtime.jsx)("span", {
-							style: {
-								width: 6,
-								height: 6,
-								borderRadius: "50%",
-								background: dot,
-								flexShrink: 0
-							},
-							"aria-hidden": true
-						}), label]
+			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+				(0, react_jsx_runtime.jsx)("style", { children: DIALOG_WIDTH_CSS }),
+				(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+					label: title,
+					side: "top",
+					delayMs: 300,
+					children: (0, react_jsx_runtime.jsx)("span", {
+						style: { display: "inline-flex" },
+						children: (0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.Pill, {
+							onClick: () => setDialogOpen(true),
+							"aria-label": title,
+							"aria-haspopup": "dialog",
+							children: [(0, react_jsx_runtime.jsx)("span", {
+								style: {
+									width: 6,
+									height: 6,
+									borderRadius: "50%",
+									background: dot,
+									flexShrink: 0
+								},
+								"aria-hidden": true
+							}), label]
+						})
+					})
+				}),
+				(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
+					open: dialogOpen,
+					onClose: () => setDialogOpen(false),
+					title: "Auto-approval",
+					className: "aa-modal-wide",
+					...state.kind === "status" ? { description: summaryLine(state.status) } : {},
+					children: state.kind === "status" ? (0, react_jsx_runtime.jsx)(DialogContent, {
+						status: state.status,
+						history,
+						toggling,
+						error: dialogError,
+						onToggle: toggle
+					}) : (0, react_jsx_runtime.jsx)("div", {
+						style: {
+							fontSize: 12,
+							lineHeight: "18px",
+							color: LABEL_SECONDARY
+						},
+						children: state.kind === "loading" ? "Loading auto-approval status…" : `Status unavailable: ${state.message}`
 					})
 				})
-			}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
-				open: dialogOpen,
-				onClose: () => setDialogOpen(false),
-				title: "Auto-approval",
-				...state.kind === "status" ? { description: summaryLine(state.status) } : {},
-				children: state.kind === "status" ? (0, react_jsx_runtime.jsx)(DialogContent, {
-					status: state.status,
-					history,
-					toggling,
-					error: dialogError,
-					onToggle: toggle
-				}) : (0, react_jsx_runtime.jsx)("div", {
-					style: {
-						fontSize: 12,
-						lineHeight: "18px",
-						color: LABEL_SECONDARY
-					},
-					children: state.kind === "loading" ? "Loading auto-approval status…" : `Status unavailable: ${state.message}`
-				})
-			})] });
+			] });
 		}
 		//#endregion
 		//#region ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js

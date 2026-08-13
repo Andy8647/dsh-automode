@@ -37,6 +37,14 @@ const BORDER_L2 = 'var(--dsw-alias-border-l2)';
 const BG_LAYER_2 = 'var(--dsw-alias-bg-layer-2)';
 const BG_LAYER_3 = 'var(--dsw-alias-bg-layer-3)';
 const MONO_FONT = 'var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)';
+/**
+ * Width override for the official Modal: the figma dialog is min(380px, 100%),
+ * which cramps the toggle row (the "Turn off" label wraps) and truncates the
+ * decision table. We keep every official behavior (mask, blur, Escape, portal,
+ * aria) and only widen the card via a class injected below — no !important on
+ * layout-critical properties, just the dialog width.
+ */
+const DIALOG_WIDTH_CSS = '.aa-modal-wide { width: min(660px, 100%) !important; }';
 /* ------------------------------------------------------------------ */
 /* Text helpers                                                        */
 /* ------------------------------------------------------------------ */
@@ -68,9 +76,9 @@ function describe(status) {
 /* Decision table pieces                                               */
 /* ------------------------------------------------------------------ */
 const CELL = {
-    padding: '6px 8px',
-    fontSize: 11,
-    lineHeight: '16px',
+    padding: '8px 10px',
+    fontSize: 12,
+    lineHeight: '18px',
     textAlign: 'left',
     verticalAlign: 'top',
 };
@@ -97,9 +105,9 @@ function DecisionRow({ record }) {
         ? record.time
         : time.toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     return (_jsxs("tr", { style: { borderTop: `1px solid ${BORDER_L1}` }, children: [_jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', color: LABEL_CAPTION, fontFamily: MONO_FONT }, children: timeText }), _jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', color: LABEL_PRIMARY, fontFamily: MONO_FONT }, children: record.tool }), _jsx("td", { style: {
-                    ...CELL, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+                    ...CELL, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
                 }, title: record.stage, children: record.stage }), _jsx("td", { style: CELL, children: _jsx(VerdictBadge, { decision: record.decision }) }), _jsx("td", { style: {
-                    ...CELL, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+                    ...CELL, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
                 }, title: detail, children: detail })] }));
 }
 /* ------------------------------------------------------------------ */
@@ -125,7 +133,7 @@ function StatTile({ label, value, color }) {
 function DialogContent({ status, history, toggling, error, onToggle, }) {
     return (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, children: [_jsxs("div", { style: { minWidth: 0 }, children: [_jsx("div", { style: { fontSize: 14, lineHeight: '22px', fontWeight: 600, color: LABEL_PRIMARY }, children: status.enabled ? 'Enabled' : 'Disabled' }), _jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: status.enabled
                                     ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
-                                    : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'outline' : 'primary', size: "sm", disabled: toggling, onClick: onToggle, children: status.enabled ? 'Turn off' : 'Turn on' })] }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls require manual approval." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR }), _jsx(StatTile, { label: "Asked", value: status.asks, color: WARN })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
+                                    : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'outline' : 'primary', size: "sm", disabled: toggling, onClick: onToggle, style: { flexShrink: 0, whiteSpace: 'nowrap' }, children: status.enabled ? 'Turn off' : 'Turn on' })] }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls require manual approval." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR }), _jsx(StatTile, { label: "Asked", value: status.asks, color: WARN })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
                 ? (_jsx("div", { style: { padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: "No auto-approval decisions recorded for this session yet." }))
                 : (
                 // The official dialog is min(380px, 100%) wide; the table scrolls
@@ -246,7 +254,7 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
         label = state.status.denials > 0 ? `AA ·${state.status.denials}` : 'AA on';
         title = describe(state.status);
     }
-    return (_jsxs(_Fragment, { children: [_jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: "Auto-approval", ...state.kind === 'status' ? { description: summaryLine(state.status) } : {}, children: state.kind === 'status'
+    return (_jsxs(_Fragment, { children: [_jsx("style", { children: DIALOG_WIDTH_CSS }), _jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: "Auto-approval", className: "aa-modal-wide", ...state.kind === 'status' ? { description: summaryLine(state.status) } : {}, children: state.kind === 'status'
                     ? (_jsx(DialogContent, { status: state.status, history: history, toggling: toggling, error: dialogError, onToggle: toggle }))
                     : (_jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: state.kind === 'loading'
                             ? 'Loading auto-approval status…'
