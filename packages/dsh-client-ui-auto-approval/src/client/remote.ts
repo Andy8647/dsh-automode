@@ -34,7 +34,6 @@ export interface AutoApprovalStatus {
   readonly autoApproveTools: number
   readonly classifier: string
   readonly denials: number
-  readonly paused: boolean
   readonly approvals: number
   readonly totalDenials: number
 }
@@ -57,7 +56,6 @@ const statusSchema = z.object({
   autoApproveTools: z.number().readonly(),
   classifier: z.string().readonly(),
   denials: z.number().readonly(),
-  paused: z.boolean().readonly(),
   approvals: z.number().readonly(),
   totalDenials: z.number().readonly(),
 })

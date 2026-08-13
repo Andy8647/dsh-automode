@@ -39,8 +39,6 @@ export interface Config {
    * 豁免，这是给只读 shell 命令的唯一免 L1 通道。
    */
   bashCommandPrefixes?: string[]
-  /** 连续被 deny N 次后暂停自动放行，本 turn 内一律 deny（防失控）。 */
-  consecutiveDenyLimit?: number
   /** L1 Stage 1（fast 过滤）的 provider；须与 classifierFastModel 成对。 */
   classifierFastProvider?: string
   /** L1 Stage 1（fast 过滤）的 model；设置后启用 L1。 */
@@ -89,7 +87,6 @@ export const Config: z<Config> = z.object({
   selfKillGuard: z.boolean().default(true),
   auditSessionEvents: z.boolean().default(false),
   bashCommandPrefixes: z.array(z.string()).default([]),
-  consecutiveDenyLimit: z.number().step(1).min(1).default(3),
   classifierFastProvider: z.string(),
   classifierFastModel: z.string(),
   classifierDeepProvider: z.string(),
@@ -131,7 +128,6 @@ export interface ResolvedConfig {
   readonly autoApproveTools: ReadonlySet<string>
   /** bash 命令前缀白名单（前缀匹配 + 无 shell 元字符校验）。 */
   readonly bashCommandPrefixes: readonly string[]
-  readonly consecutiveDenyLimit: number
   /** 自毁护栏（拦截终止宿主进程的命令），默认开。 */
   readonly selfKillGuard: boolean
   /** session 事件审计写入开关（默认关——08-12 final 起写 session 事件会使日志无法打开）。 */
@@ -185,16 +181,12 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     askPatterns: string[]
     autoApproveTools: string[]
     bashCommandPrefixes: string[]
-    consecutiveDenyLimit: number
     classifierTimeoutMs: number
     selfKillGuard: boolean
     auditSessionEvents: boolean
   }
   const deny = compilePatterns('deny', resolved.denyPatterns)
   const ask = compilePatterns('ask', resolved.askPatterns)
-  if (!Number.isInteger(resolved.consecutiveDenyLimit) || resolved.consecutiveDenyLimit < 1) {
-    throw new Error('auto-approval: consecutiveDenyLimit must be a positive integer')
-  }
   if (!Number.isFinite(resolved.classifierTimeoutMs) || resolved.classifierTimeoutMs <= 0) {
     throw new Error('auto-approval: classifierTimeoutMs must be a positive finite number')
   }
@@ -211,7 +203,6 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     askSources: resolved.askPatterns,
     autoApproveTools: new Set(resolved.autoApproveTools),
     bashCommandPrefixes: resolved.bashCommandPrefixes,
-    consecutiveDenyLimit: resolved.consecutiveDenyLimit,
     selfKillGuard: resolved.selfKillGuard,
     auditSessionEvents: resolved.auditSessionEvents,
     ...fast === undefined ? {} : {

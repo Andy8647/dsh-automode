@@ -32,7 +32,6 @@ window.__ModuleLoader__.load({
 		const POLL_MS = 2e3;
 		const SUCCESS = "var(--dsw-alias-state-success-primary)";
 		const ERROR = "var(--dsw-alias-state-error-primary)";
-		const WARN = "var(--dsw-alias-state-warn-primary)";
 		const LABEL_PRIMARY = "var(--dsw-alias-label-primary)";
 		const LABEL_SECONDARY = "var(--dsw-alias-label-secondary)";
 		const LABEL_CAPTION = "var(--dsw-alias-label-caption)";
@@ -66,13 +65,11 @@ window.__ModuleLoader__.load({
 		function describe(status) {
 			const counts = countLine(status);
 			if (!status.enabled) return `auto-approval off — ${counts}`;
-			const parts = [
+			return `auto-approval on — ${[
 				`${status.denyPatterns + status.askPatterns} rules`,
 				status.classifier === "disabled" ? "no review model" : `model ${shortModel(status.classifier)}`,
 				counts
-			];
-			if (status.paused) parts.push("paused");
-			return `auto-approval on — ${parts.join(" · ")}`;
+			].join(" · ")}`;
 		}
 		const CELL = {
 			padding: "8px 10px",
@@ -316,15 +313,6 @@ window.__ModuleLoader__.load({
 					})]
 				}),
 				(0, react_jsx_runtime.jsx)(ConfigSummary, { status }),
-				status.paused && (0, react_jsx_runtime.jsx)("div", {
-					style: {
-						marginTop: 10,
-						fontSize: 12,
-						lineHeight: "18px",
-						color: WARN
-					},
-					children: "Paused: deny limit reached this turn — calls are denied until the next turn."
-				}),
 				(0, react_jsx_runtime.jsxs)("div", {
 					style: {
 						display: "flex",
@@ -511,10 +499,6 @@ window.__ModuleLoader__.load({
 			} else if (!state.status.enabled) {
 				dot = LABEL_CAPTION;
 				label = "AA off";
-				title = describe(state.status);
-			} else if (state.status.paused) {
-				dot = WARN;
-				label = "AA paused";
 				title = describe(state.status);
 			} else {
 				dot = SUCCESS;
@@ -4593,7 +4577,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			autoApproveTools: number().readonly(),
 			classifier: string().readonly(),
 			denials: number().readonly(),
-			paused: boolean().readonly(),
 			approvals: number().readonly(),
 			totalDenials: number().readonly()
 		});

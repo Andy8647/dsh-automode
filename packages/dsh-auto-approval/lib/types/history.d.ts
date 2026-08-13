@@ -5,7 +5,7 @@
  * 命中的 pattern），给 chip 的 hover tooltip 提供累计统计（approvals /
  * denials）。
  *
- * 与 tracker 的分工：tracker 只算「本 turn 连续 deny」（防失控用），
+ * 与 tracker 的分工：tracker 只算「本 turn deny 计数」（chip 的本 turn 显示），
  * 这里算「插件加载以来的累计决策」。无 agent 的调用不记录（与 tracker
  * fail-closed 一致）。
  * @module @deepseek-ai/dsh-auto-approval/history

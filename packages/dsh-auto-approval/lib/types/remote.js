@@ -77,7 +77,7 @@ let AutoApprovalStatusService = (() => {
             super(ctx, 'autoApprovalStatus');
             this.hooks = hooks;
         }
-        /** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/paused/统计归零）。 */
+        /** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/统计归零）。 */
         getStatus(agent) {
             return this.hooks.read(agent);
         }

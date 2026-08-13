@@ -7,13 +7,13 @@
  *   L0 规则引擎（硬底线）→ L1 LLM classifier（意图对齐，可配）
  *
  * 全托管模式：决策收敛为 allow/deny 两态，不转人工。不确定的调用
- * （原 askPatterns 命中、L1 判定 ASK、fail-closed、防失控 pause）一律 deny。
+ * （原 askPatterns 命中、L1 判定 ASK、fail-closed）一律 deny。
  *
  * 设计要点（详见 README「方案设计」）：
  * - L0 deny 同时走 `ctx.tools.guard()` 单调注册（M3），prepend 旁路不掉
  * - deny 的 reason 是通用文案，pattern 只进审计与日志（M2）
  * - 检测到 sandbox escalation 参数即豁免 L1，避免双重审批（M5）
- * - 连续 deny 达上限后本 turn 暂停自动放行（M6，暂停期间一律 deny），turn 边界从 session log 推导
+ * - 本 turn deny 计数（tracker）从 session log 的 turn/start 惰性推导
  * - L1 一切失败 fail-closed 转 deny，绝不默认放行
  *
  * @module @deepseek-ai/dsh-auto-approval
@@ -31,9 +31,6 @@ export const name = 'auto-approval';
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
 export const NS = settingsNamespace('auto-approval');
 export { Config } from "./config.js";
-/** 连续 deny 达上限后暂停自动放行的 deny 文案（M6 防失控，通用，不含计数细节以外信息）。 */
-const PAUSED_REASON = 'auto-approval: auto-approval is paused after repeated denials this turn. ' +
-    'Stop attempting blocked actions; the call is denied and will stay denied until the next turn.';
 /** L1 不可用（无模型服务或无用户意图上下文）时 fail-closed 的 deny 文案。 */
 const L1_UNAVAILABLE_REASON = 'auto-approval: automatic classifier is unavailable; the call is denied.';
 /** L1 判定失败（超时/解析失败）时 fail-closed 的 deny 文案。 */
@@ -79,7 +76,7 @@ function callFacts(exec) {
 export function apply(ctx, config = {}) {
     let current = () => config;
     let resolved = resolveConfig(config);
-    let tracker = new DenialTracker(resolved.consecutiveDenyLimit);
+    let tracker = new DenialTracker();
     const history = new DecisionHistory();
     const logger = ctx.logger('auto-approval');
     /**
@@ -115,7 +112,6 @@ export function apply(ctx, config = {}) {
                 ? 'disabled'
                 : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
             denials: tracker.denials(agent),
-            paused: tracker.isPaused(agent),
             approvals: counts.approvals,
             totalDenials: counts.denials,
         };
@@ -162,7 +158,6 @@ export function apply(ctx, config = {}) {
     const arm = () => {
         logger.info(`auto-approval armed: ${resolved.deny.length} deny patterns (+${resolved.ask.length} legacy ask patterns, now deny), ` +
             `${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, ` +
-            `consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` +
             (resolved.classifier === undefined
                 ? ', L1 disabled'
                 : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`));
@@ -170,7 +165,6 @@ export function apply(ctx, config = {}) {
             deny: resolved.deny.length,
             ask: resolved.ask.length,
             autoApproveTools: resolved.autoApproveTools.size,
-            consecutiveDenyLimit: resolved.consecutiveDenyLimit,
             classifier: resolved.classifier === undefined
                 ? 'disabled'
                 : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
@@ -185,8 +179,8 @@ export function apply(ctx, config = {}) {
         onChange: () => {
             settingsAttached = true;
             resolved = resolveConfig(current());
-            // 配置换了计数语义也可能变（如新的 limit），重置防失控计数最保守。
-            tracker = new DenialTracker(resolved.consecutiveDenyLimit);
+            // 配置热更新：重建 tracker（denials 计数与 turn 状态重置）。
+            tracker = new DenialTracker();
             arm();
         },
     });
@@ -236,14 +230,6 @@ export function apply(ctx, config = {}) {
                 });
                 return { kind: 'deny', reason: selfKillDenyReason(process.pid) };
             }
-        }
-        // ---- M6 防失控：本 turn 连续 deny 达上限，暂停自动放行（一律 deny） ----
-        if (tracker.isPaused(agent)) {
-            auditDecision(ctx, agent, {
-                tool: exec.name, callId, stage: 'paused', decision: 'deny',
-                detail: `consecutiveDenyLimit=${resolved.consecutiveDenyLimit} reached`,
-            });
-            return { kind: 'deny', reason: PAUSED_REASON };
         }
         // ---- M5：sandbox escalation 请求豁免 L1（避免双重审批） ----
         if (hasEscalationArgs(exec.arguments)) {

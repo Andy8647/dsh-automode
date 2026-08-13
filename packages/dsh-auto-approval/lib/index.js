@@ -54,7 +54,6 @@ const Config = z.object({
 	selfKillGuard: z.boolean().default(true),
 	auditSessionEvents: z.boolean().default(false),
 	bashCommandPrefixes: z.array(z.string()).default([]),
-	consecutiveDenyLimit: z.number().step(1).min(1).default(3),
 	classifierFastProvider: z.string(),
 	classifierFastModel: z.string(),
 	classifierDeepProvider: z.string(),
@@ -96,7 +95,6 @@ function resolveConfig(config = {}) {
 	const resolved = Config(config);
 	const deny = compilePatterns("deny", resolved.denyPatterns);
 	const ask = compilePatterns("ask", resolved.askPatterns);
-	if (!Number.isInteger(resolved.consecutiveDenyLimit) || resolved.consecutiveDenyLimit < 1) throw new Error("auto-approval: consecutiveDenyLimit must be a positive integer");
 	if (!Number.isFinite(resolved.classifierTimeoutMs) || resolved.classifierTimeoutMs <= 0) throw new Error("auto-approval: classifierTimeoutMs must be a positive finite number");
 	const fast = resolveRoute("classifierFast", resolved.classifierFastProvider, resolved.classifierFastModel);
 	const deep = resolveRoute("classifierDeep", resolved.classifierDeepProvider, resolved.classifierDeepModel);
@@ -109,7 +107,6 @@ function resolveConfig(config = {}) {
 		askSources: resolved.askPatterns,
 		autoApproveTools: new Set(resolved.autoApproveTools),
 		bashCommandPrefixes: resolved.bashCommandPrefixes,
-		consecutiveDenyLimit: resolved.consecutiveDenyLimit,
 		selfKillGuard: resolved.selfKillGuard,
 		auditSessionEvents: resolved.auditSessionEvents,
 		...fast === void 0 ? {} : { classifier: {
@@ -375,7 +372,7 @@ function selfKillDenyReason(hostPid) {
 * 模型无需自行规划。
 *
 * 全托管模式下无 ask 路径：不确定的调用统一 deny（含原 L0-askPatterns 命中、
-* L1 判定 ASK、fail-closed、防失控 pause），模型报告结果即可，无人介入。 */
+* L1 判定 ASK、fail-closed），模型报告结果即可，无人介入。 */
 const DENY_REASON = "auto-approval: this call was denied by the auto-approval security policy. Do not retry it or attempt an alternative. Report the denial to the user and ask how to proceed.";
 /**
 * M3：由 L0 deny 规则构造单调 guard。guard 在所有 `tools/pre-execute`
@@ -590,7 +587,7 @@ let AutoApprovalStatusService = (() => {
 			super(ctx, "autoApprovalStatus");
 			this.hooks = hooks;
 		}
-		/** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/paused/统计归零）。 */
+		/** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/统计归零）。 */
 		getStatus(agent) {
 			return this.hooks.read(agent);
 		}
@@ -638,7 +635,6 @@ const statusSchema = z$1.object({
 	autoApproveTools: z$1.number().readonly(),
 	classifier: z$1.string().readonly(),
 	denials: z$1.number().readonly(),
-	paused: z$1.boolean().readonly(),
 	approvals: z$1.number().readonly(),
 	totalDenials: z$1.number().readonly()
 });
@@ -744,25 +740,22 @@ const remoteManifest = {
 //#endregion
 //#region lib/types/tracker.js
 /**
-* 防失控计数（M6）：每 agent 的"当前 turn 内连续 deny 次数"。
+* 本 turn deny 计数（per agent）：给 remote/chip 显示"当前 turn 累计被
+* deny 次数"。
 *
 * turn 边界不从 agent 事件订阅，而是惰性读 session log 里最后一个
 * `turn/start`——append-only、seq 连续的 log 配上扫描游标，每次同步是
 * O(增量事件数)，且不存在订阅漏接/时序漂移问题。
 *
 * 无 agent 的调用（`exec.agent === undefined`）拿不到 session，fail-closed：
-* 不参与计数，也永远不会被 pause 影响。
+* 不参与计数。
 * @module @deepseek-ai/dsh-auto-approval/tracker
 */
 var DenialTracker = class {
-	limit;
 	states = /* @__PURE__ */ new WeakMap();
-	constructor(limit) {
-		this.limit = limit;
-	}
 	/**
 	* 同步 agent 的 turn 状态：从游标处扫到 log 末尾，遇到 turn 号变化即
-	* 清零连续 deny 计数（新 turn = 新的用户意图上下文，防失控重新起算）。
+	* 清零 deny 计数（新 turn = 新的用户意图上下文，计数重新起算）。
 	*/
 	sync(agent) {
 		let state = this.states.get(agent);
@@ -785,14 +778,6 @@ var DenialTracker = class {
 		state.cursor = events.length;
 		return state;
 	}
-	/**
-	* 该 agent 是否已进入"暂停自动放行"状态（本 turn 连续 deny 达到上限）。
-	* 无 agent 的调用永远返回 false（fail-closed 不计数）。
-	*/
-	isPaused(agent) {
-		if (agent === void 0) return false;
-		return this.sync(agent).denials >= this.limit;
-	}
 	/** 该 agent 当前 turn 内累计被 deny 的次数（无 agent 返回 0）。 */
 	denials(agent) {
 		if (agent === void 0) return 0;
@@ -813,7 +798,7 @@ var DenialTracker = class {
 * 命中的 pattern），给 chip 的 hover tooltip 提供累计统计（approvals /
 * denials）。
 *
-* 与 tracker 的分工：tracker 只算「本 turn 连续 deny」（防失控用），
+* 与 tracker 的分工：tracker 只算「本 turn deny 计数」（chip 的本 turn 显示），
 * 这里算「插件加载以来的累计决策」。无 agent 的调用不记录（与 tracker
 * fail-closed 一致）。
 * @module @deepseek-ai/dsh-auto-approval/history
@@ -886,13 +871,13 @@ var DecisionHistory = class {
 *   L0 规则引擎（硬底线）→ L1 LLM classifier（意图对齐，可配）
 *
 * 全托管模式：决策收敛为 allow/deny 两态，不转人工。不确定的调用
-* （原 askPatterns 命中、L1 判定 ASK、fail-closed、防失控 pause）一律 deny。
+* （原 askPatterns 命中、L1 判定 ASK、fail-closed）一律 deny。
 *
 * 设计要点（详见 README「方案设计」）：
 * - L0 deny 同时走 `ctx.tools.guard()` 单调注册（M3），prepend 旁路不掉
 * - deny 的 reason 是通用文案，pattern 只进审计与日志（M2）
 * - 检测到 sandbox escalation 参数即豁免 L1，避免双重审批（M5）
-* - 连续 deny 达上限后本 turn 暂停自动放行（M6，暂停期间一律 deny），turn 边界从 session log 推导
+* - 本 turn deny 计数（tracker）从 session log 的 turn/start 惰性推导
 * - L1 一切失败 fail-closed 转 deny，绝不默认放行
 *
 * @module @deepseek-ai/dsh-auto-approval
@@ -900,8 +885,6 @@ var DecisionHistory = class {
 const name = "auto-approval";
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
 const NS = settingsNamespace("auto-approval");
-/** 连续 deny 达上限后暂停自动放行的 deny 文案（M6 防失控，通用，不含计数细节以外信息）。 */
-const PAUSED_REASON = "auto-approval: auto-approval is paused after repeated denials this turn. Stop attempting blocked actions; the call is denied and will stay denied until the next turn.";
 /** L1 不可用（无模型服务或无用户意图上下文）时 fail-closed 的 deny 文案。 */
 const L1_UNAVAILABLE_REASON = "auto-approval: automatic classifier is unavailable; the call is denied.";
 /** L1 判定失败（超时/解析失败）时 fail-closed 的 deny 文案。 */
@@ -943,7 +926,7 @@ function callFacts(exec) {
 function apply(ctx, config = {}) {
 	let current = () => config;
 	let resolved = resolveConfig(config);
-	let tracker = new DenialTracker(resolved.consecutiveDenyLimit);
+	let tracker = new DenialTracker();
 	const history = new DecisionHistory();
 	const logger = ctx.logger("auto-approval");
 	/**
@@ -977,7 +960,6 @@ function apply(ctx, config = {}) {
 			autoApproveTools: resolved.autoApproveTools.size,
 			classifier: resolved.classifier === void 0 ? "disabled" : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`,
 			denials: tracker.denials(agent),
-			paused: tracker.isPaused(agent),
 			approvals: counts.approvals,
 			totalDenials: counts.denials
 		};
@@ -1009,12 +991,11 @@ function apply(ctx, config = {}) {
 		typertCtx.get("typert").register(remoteManifest);
 	});
 	const arm = () => {
-		logger.info(`auto-approval armed: ${resolved.deny.length} deny patterns (+${resolved.ask.length} legacy ask patterns, now deny), ${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` + (resolved.classifier === void 0 ? ", L1 disabled" : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`));
+		logger.info(`auto-approval armed: ${resolved.deny.length} deny patterns (+${resolved.ask.length} legacy ask patterns, now deny), ${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, ` + (resolved.classifier === void 0 ? ", L1 disabled" : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`));
 		auditArmed(ctx, {
 			deny: resolved.deny.length,
 			ask: resolved.ask.length,
 			autoApproveTools: resolved.autoApproveTools.size,
-			consecutiveDenyLimit: resolved.consecutiveDenyLimit,
 			classifier: resolved.classifier === void 0 ? "disabled" : `${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`
 		});
 	};
@@ -1029,7 +1010,7 @@ function apply(ctx, config = {}) {
 		onChange: () => {
 			settingsAttached = true;
 			resolved = resolveConfig(current());
-			tracker = new DenialTracker(resolved.consecutiveDenyLimit);
+			tracker = new DenialTracker();
 			arm();
 		}
 	});
@@ -1079,19 +1060,6 @@ function apply(ctx, config = {}) {
 					reason: selfKillDenyReason(process.pid)
 				};
 			}
-		}
-		if (tracker.isPaused(agent)) {
-			auditDecision(ctx, agent, {
-				tool: exec.name,
-				callId,
-				stage: "paused",
-				decision: "deny",
-				detail: `consecutiveDenyLimit=${resolved.consecutiveDenyLimit} reached`
-			});
-			return {
-				kind: "deny",
-				reason: PAUSED_REASON
-			};
 		}
 		if (hasEscalationArgs(exec.arguments)) {
 			auditDecision(ctx, agent, {

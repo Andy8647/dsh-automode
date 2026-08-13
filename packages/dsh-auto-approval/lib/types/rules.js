@@ -107,7 +107,7 @@ export function selfKillDenyReason(hostPid) {
  * 模型无需自行规划。
  *
  * 全托管模式下无 ask 路径：不确定的调用统一 deny（含原 L0-askPatterns 命中、
- * L1 判定 ASK、fail-closed、防失控 pause），模型报告结果即可，无人介入。 */
+ * L1 判定 ASK、fail-closed），模型报告结果即可，无人介入。 */
 export const DENY_REASON = 'auto-approval: this call was denied by the auto-approval security policy. ' +
     'Do not retry it or attempt an alternative. Report the denial to the user and ask how to proceed.';
 /**

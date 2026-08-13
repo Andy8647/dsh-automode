@@ -35,8 +35,6 @@ export interface AutoApprovalStatus {
   readonly classifier: string
   /** 当前 agent 本 turn 内累计被 deny 的次数。 */
   readonly denials: number
-  /** 当前 agent 是否已进入"暂停自动放行"（deny 达上限）。 */
-  readonly paused: boolean
   /** 累计放行次数（插件加载以来）。 */
   readonly approvals: number
   /** 累计 deny 次数（插件加载以来）。 */
@@ -72,7 +70,7 @@ export class AutoApprovalStatusService extends TypertRemoteService {
     this.hooks = hooks
   }
 
-  /** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/paused/统计归零）。 */
+  /** 当前 agent 的 auto-approval 状态快照（无 agent 则 denials/统计归零）。 */
   @Remote
   getStatus(agent: Agent): AutoApprovalStatus {
     return this.hooks.read(agent)

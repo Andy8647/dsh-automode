@@ -28,7 +28,6 @@ const POLL_MS = 2000;
 /* ------------------------------------------------------------------ */
 const SUCCESS = 'var(--dsw-alias-state-success-primary)';
 const ERROR = 'var(--dsw-alias-state-error-primary)';
-const WARN = 'var(--dsw-alias-state-warn-primary)';
 const LABEL_PRIMARY = 'var(--dsw-alias-label-primary)';
 const LABEL_SECONDARY = 'var(--dsw-alias-label-secondary)';
 const LABEL_CAPTION = 'var(--dsw-alias-label-caption)';
@@ -71,8 +70,6 @@ function describe(status) {
         status.classifier === 'disabled' ? 'no review model' : `model ${shortModel(status.classifier)}`,
         counts,
     ];
-    if (status.paused)
-        parts.push('paused');
     return `auto-approval on — ${parts.join(' · ')}`;
 }
 /* ------------------------------------------------------------------ */
@@ -193,7 +190,7 @@ function StatusTag({ enabled }) {
 function DialogContent({ status, history, toggling, error, onToggle, }) {
     return (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, children: [_jsxs("div", { style: { minWidth: 0 }, children: [_jsx("div", { style: { display: 'flex', alignItems: 'center', gap: 8 }, children: _jsx(StatusTag, { enabled: status.enabled }) }), _jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY, marginTop: 6 }, children: status.enabled
                                     ? 'Safe calls run automatically; dangerous ones are blocked.'
-                                    : 'All calls go through the normal approval flow.' })] }), _jsx(Switch, { checked: status.enabled, disabled: toggling, onChange: onToggle, label: status.enabled ? 'Turn off auto-approval' : 'Turn on auto-approval' })] }), _jsx(ConfigSummary, { status: status }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls are denied until the next turn." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
+                                    : 'All calls go through the normal approval flow.' })] }), _jsx(Switch, { checked: status.enabled, disabled: toggling, onChange: onToggle, label: status.enabled ? 'Turn off auto-approval' : 'Turn on auto-approval' })] }), _jsx(ConfigSummary, { status: status }), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
                 ? (_jsx("div", { style: { padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: "No auto-approval decisions recorded for this session yet." }))
                 : (
                 // The official dialog is min(380px, 100%) wide; the table scrolls
@@ -302,11 +299,6 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
     else if (!state.status.enabled) {
         dot = LABEL_CAPTION;
         label = 'AA off';
-        title = describe(state.status);
-    }
-    else if (state.status.paused) {
-        dot = WARN;
-        label = 'AA paused';
         title = describe(state.status);
     }
     else {

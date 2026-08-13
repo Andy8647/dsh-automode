@@ -49,7 +49,7 @@ export declare function selfKillDenyReason(hostPid: number): string;
  * 模型无需自行规划。
  *
  * 全托管模式下无 ask 路径：不确定的调用统一 deny（含原 L0-askPatterns 命中、
- * L1 判定 ASK、fail-closed、防失控 pause），模型报告结果即可，无人介入。 */
+ * L1 判定 ASK、fail-closed），模型报告结果即可，无人介入。 */
 export declare const DENY_REASON: string;
 /**
  * M3：由 L0 deny 规则构造单调 guard。guard 在所有 `tools/pre-execute`

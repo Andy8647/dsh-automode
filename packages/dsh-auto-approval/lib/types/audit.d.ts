@@ -27,13 +27,11 @@ export type DecisionStage =
  | 'L1-deep'
 /** L1 不可用（无模型/无意图/超时/解析失败），fail-closed 转 deny。 */
  | 'L1-fail-closed'
-/** 连续 deny 达上限，本 turn 暂停自动放行（M6）。 */
- | 'paused'
 /** 未命中任何规则，默认放行。 */
  | 'default-allow';
 /** `auto-approval/decision` 事件载荷（必须 lossless JSON）。
  * 全托管收敛为 allow/deny 两态：不确定的调用（原 askPatterns 命中、L1 ASK、
- * fail-closed、防失控 pause）统一 deny。 */
+ * fail-closed）统一 deny。 */
 export interface AutoApprovalDecisionEvent {
     /** tool 名。 */
     readonly tool: string;
@@ -64,7 +62,6 @@ export declare function auditArmed(ctx: Context, summary: {
     readonly deny: number;
     readonly ask: number;
     readonly autoApproveTools: number;
-    readonly consecutiveDenyLimit: number;
     readonly classifier: string;
 }): void;
 /**

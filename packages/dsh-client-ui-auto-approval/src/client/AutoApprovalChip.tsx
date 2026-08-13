@@ -44,7 +44,6 @@ type ChipState =
 
 const SUCCESS = 'var(--dsw-alias-state-success-primary)'
 const ERROR = 'var(--dsw-alias-state-error-primary)'
-const WARN = 'var(--dsw-alias-state-warn-primary)'
 const LABEL_PRIMARY = 'var(--dsw-alias-label-primary)'
 const LABEL_SECONDARY = 'var(--dsw-alias-label-secondary)'
 const LABEL_CAPTION = 'var(--dsw-alias-label-caption)'
@@ -91,7 +90,6 @@ function describe(status: AutoApprovalStatus): string {
     status.classifier === 'disabled' ? 'no review model' : `model ${shortModel(status.classifier)}`,
     counts,
   ]
-  if (status.paused) parts.push('paused')
   return `auto-approval on — ${parts.join(' · ')}`
 }
 
@@ -306,13 +304,6 @@ function DialogContent({
       {/* Config summary */}
       <ConfigSummary status={status} />
 
-      {/* Paused notice */}
-      {status.paused && (
-        <div style={{ marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }}>
-          Paused: deny limit reached this turn — calls are denied until the next turn.
-        </div>
-      )}
-
       {/* Cumulative counts */}
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
         <StatTile label="Approved" value={status.approvals} color={SUCCESS} />
@@ -464,10 +455,6 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
   } else if (!state.status.enabled) {
     dot = LABEL_CAPTION
     label = 'AA off'
-    title = describe(state.status)
-  } else if (state.status.paused) {
-    dot = WARN
-    label = 'AA paused'
     title = describe(state.status)
   } else {
     dot = SUCCESS

@@ -39,7 +39,6 @@ export const Config = z.object({
     selfKillGuard: z.boolean().default(true),
     auditSessionEvents: z.boolean().default(false),
     bashCommandPrefixes: z.array(z.string()).default([]),
-    consecutiveDenyLimit: z.number().step(1).min(1).default(3),
     classifierFastProvider: z.string(),
     classifierFastModel: z.string(),
     classifierDeepProvider: z.string(),
@@ -85,9 +84,6 @@ export function resolveConfig(config = {}) {
     const resolved = Config(config);
     const deny = compilePatterns('deny', resolved.denyPatterns);
     const ask = compilePatterns('ask', resolved.askPatterns);
-    if (!Number.isInteger(resolved.consecutiveDenyLimit) || resolved.consecutiveDenyLimit < 1) {
-        throw new Error('auto-approval: consecutiveDenyLimit must be a positive integer');
-    }
     if (!Number.isFinite(resolved.classifierTimeoutMs) || resolved.classifierTimeoutMs <= 0) {
         throw new Error('auto-approval: classifierTimeoutMs must be a positive finite number');
     }
@@ -104,7 +100,6 @@ export function resolveConfig(config = {}) {
         askSources: resolved.askPatterns,
         autoApproveTools: new Set(resolved.autoApproveTools),
         bashCommandPrefixes: resolved.bashCommandPrefixes,
-        consecutiveDenyLimit: resolved.consecutiveDenyLimit,
         selfKillGuard: resolved.selfKillGuard,
         auditSessionEvents: resolved.auditSessionEvents,
         ...fast === undefined ? {} : {

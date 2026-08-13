@@ -130,31 +130,6 @@ describe('escalation 豁免（M5）', () => {
   })
 })
 
-describe('防失控（M6）', () => {
-  it('连续 deny 达上限后本 turn 内白名单也拒绝；新 turn 恢复', async () => {
-    const { run } = harness({ consecutiveDenyLimit: 1, denyPatterns: ['forbidden'], auditSessionEvents: true })
-    const { agent, events, audited } = fakeAgent([{
-      type: 'turn/start', seq: 0, time: Date.now(), data: { turn: 1 },
-    } as unknown as SessionEvent])
-
-    expect(await run(makeExec('bash', { command: 'forbidden' }, agent))).toMatchObject({ kind: 'deny' })
-    // 已暂停：连白名单工具都拒绝（全托管无人工，一律 deny）
-    const paused = await run(makeExec('read', { path: 'x' }, agent))
-    expect(paused).toMatchObject({ kind: 'deny' })
-    expect(audited.at(-1)?.data.stage).toBe('paused')
-    // 新 turn：恢复自动放行
-    events.push({ type: 'turn/start', seq: 1, time: Date.now(), data: { turn: 2 } } as unknown as SessionEvent)
-    expect(await run(makeExec('read', { path: 'x' }, agent))).toBe(ALLOW)
-  })
-
-  it('无 agent 的调用不参与计数', async () => {
-    const { run } = harness({ consecutiveDenyLimit: 1, denyPatterns: ['forbidden'] })
-    await run(makeExec('bash', { command: 'forbidden' }))
-    // agent-less deny 不计数 → 未暂停，白名单照常放行
-    expect(await run(makeExec('read', { path: 'x' }))).toBe(ALLOW)
-  })
-})
-
 describe('settings 热更新（Web UI 开关）', () => {
   /** stub settings 服务：register 返回可控 scope，flip 模拟 UI 写入。 */
   function provideSettings(ctx: Context, initial: Record<string, unknown>): { flip(patch: Record<string, unknown>): void } {
@@ -259,17 +234,13 @@ describe('L1 LLM classifier', () => {
     })
   })
 
-  it('deep 判定 DENY → deny 并计入防失控', async () => {
-    const { ctx, run } = harness({ ...fastRoute, consecutiveDenyLimit: 1 })
+  it('deep 判定 DENY → deny', async () => {
+    const { ctx, run } = harness(fastRoute)
     provideLlm(ctx, '1', 'dangerous\nVERDICT: DENY')
-    const { agent, events } = fakeAgent([
-      { type: 'turn/start', seq: 0, time: Date.now(), data: { turn: 1 } } as unknown as SessionEvent,
-      userMessage('delete everything'),
-    ])
+    const { agent } = fakeAgent([userMessage('delete everything')])
     expect(await run(makeExec('bash', { command: 'rm -rf ~/docs' }, agent))).toMatchObject({ kind: 'deny' })
-    // L1 deny 计数 → 已暂停，一律 deny
-    expect(await run(makeExec('read', { path: 'x' }, agent))).toMatchObject({ kind: 'deny' })
-    void events
+    // L1 deny 只进 tracker 计数，白名单工具照常放行（无 pause）
+    expect(await run(makeExec('read', { path: 'x' }, agent))).toBe(ALLOW)
   })
 
   it('L1 解析失败 → fail-closed 转 deny（绝不默认放行）', async () => {

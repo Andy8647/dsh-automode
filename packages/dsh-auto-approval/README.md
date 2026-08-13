@@ -13,9 +13,9 @@ DSH 权限自动审批插件：给 approval policy 加第三档 `auto`，classif
 | **L0 规则引擎** | deny 黑名单（含 legacy askPatterns，命中即 deny）+ 只读工具白名单，确定性、零成本 | ✅ 开 |
 | **L1 LLM classifier** | 模糊地带：用户消息 + 当前 tool call 喂模型判意图（两阶段 fast→deep） | ⚪ 关 |
 
-**全托管两态决策**：决策收敛为 allow/deny，不转人工。不确定的调用（原 askPatterns 命中、L1 判定 ASK、fail-closed、防失控 pause）一律 **deny**——`askPatterns` 字段保留以兼容旧配置，语义已并入 deny。
+**全托管两态决策**：决策收敛为 allow/deny，不转人工。不确定的调用（原 askPatterns 命中、L1 判定 ASK、fail-closed）一律 **deny**——`askPatterns` 字段保留以兼容旧配置，语义已并入 deny。
 
-硬保证：L0 deny 双保险（瀑布 listener + `ctx.tools.guard()` 单调 guard）、自毁护栏（`killall`/`pkill`/`taskkill`/`Stop-Process` 整类 deny，逃生通道 `kill <具体PID>`）、reason 不泄露规则、配置 fail-loud、连续 deny 达 `consecutiveDenyLimit`（默认 3）暂停自动放行。
+硬保证：L0 deny 双保险（瀑布 listener + `ctx.tools.guard()` 单调 guard）、自毁护栏（`killall`/`pkill`/`taskkill`/`Stop-Process` 整类 deny，逃生通道 `kill <具体PID>`）、reason 不泄露规则、配置 fail-loud。
 
 与沙箱 escalation 的关系：两层审批并存——沙箱管文件效应越界，本插件管调用本身危险性；带 escalation 参数的调用跳过 L1（L0 deny 不豁免），避免双重审批。
 
@@ -47,7 +47,6 @@ auto-approval:
     - 'sudo\s'
     - 'git\s+push\s+--force'
   autoApproveTools: [read, grep, find]
-  consecutiveDenyLimit: 3
   # 启用 L1（不配则不启用，L0 未命中即 allow）
   # classifierFastProvider: deepseek
   # classifierFastModel: deepseek-chat
@@ -64,7 +63,6 @@ auto-approval:
 | `bashCommandPrefixes` | 空 | bash 前缀白名单（`ls`/`cat` 都走 bash tool，tool 白名单豁免不了，这是只读 shell 命令免 L1 的通道） |
 | `selfKillGuard` | `true` | 自毁护栏，见上 |
 | `auditSessionEvents` | `false` | 是否写 session 事件。**保持关**：08-12 final 起 session 对未声明事件 fail-closed，开了 session 重启打不开 |
-| `consecutiveDenyLimit` | `3` | 回合内累计 deny 达 N 次后暂停自动放行 |
 | `classifierFastProvider` / `classifierFastModel` | 未设置 | L1 fast 模型路由（成对，设置后启用 L1） |
 | `classifierDeepProvider` / `classifierDeepModel` | 未设置 | L1 deep 模型路由（成对，缺省沿用 fast） |
 | `classifierTimeoutMs` | `20000` | L1 单次超时，fail-closed 转 deny |

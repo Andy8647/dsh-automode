@@ -8,7 +8,6 @@ export interface AutoApprovalStatus {
     readonly autoApproveTools: number;
     readonly classifier: string;
     readonly denials: number;
-    readonly paused: boolean;
     readonly approvals: number;
     readonly totalDenials: number;
 }
