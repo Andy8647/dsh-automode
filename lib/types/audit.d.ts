@@ -13,6 +13,8 @@ import type { AgentLike } from './tracker.ts';
 export type DecisionStage = 
 /** L0 deny 规则命中（含 guard 路径）。 */
 'L0-deny'
+/** L0 自毁护栏：终止宿主进程的命令。 */
+ | 'L0-selfkill'
 /** L0 ask 规则命中。 */
  | 'L0-ask'
 /** M5：escalation 参数豁免，交给 sandbox 升级通道审批。 */
@@ -66,6 +68,12 @@ export declare function auditArmed(ctx: Context, summary: {
 /**
  * 落一条审计事件。无 agent（无 session）时跳过；append 异常被吞掉并记
  * warn——审计永远不该阻断 tool 执行。
+ *
+ * 08-12 final 起 session 读取对未声明事件类型 fail-closed
+ * （`KNOWN_SESSION_EVENT_TYPES` 白名单，`Session.append()` 无 ignorable
+ * 通道），写自定义事件会使该 session 重启后无法打开——session 事件写入
+ * 由 `auditSessionEvents` 开关控制（默认 false）；文件日志
+ * `~/.dsh/logs/auto-approval.log` 始终记录，不受影响。
  */
-export declare function audit(ctx: Context, agent: AgentLike | undefined, event: AutoApprovalDecisionEvent): void;
+export declare function audit(ctx: Context, agent: AgentLike | undefined, event: AutoApprovalDecisionEvent, sessionEvents: boolean): void;
 //# sourceMappingURL=audit.d.ts.map

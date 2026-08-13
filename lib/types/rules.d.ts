@@ -28,6 +28,21 @@ export declare function matchBashPrefix(command: string | undefined, prefixes: r
  * 双重审批。L0 deny 不受此豁免影响（在调用方保证顺序）。
  */
 export declare function hasEscalationArgs(args: unknown): boolean;
+/** 一次自毁命中的结果。 */
+export interface SelfKillMatch {
+    /** kill 类命令中显式出现的目标 PID；整类终止命令（killall/pkill/taskkill/Stop-Process）无此字段。 */
+    readonly pid?: number;
+}
+/**
+ * 识别进程终止命令：
+ * - `killall node` / `pkill -f anything` / `taskkill /IM nginx.exe` / `Stop-Process -Name python`
+ *   整类命中（目标不可控，含宿主）——返回空对象
+ * - `kill <pid>` 只返回 pid，由调用方与宿主 PID 比较（逃生通道）
+ * - 其它命令返回 undefined
+ */
+export declare function matchSelfKill(command: string): SelfKillMatch | undefined;
+/** 自毁护栏的 deny 文案：注入宿主 PID，给「清理遗留进程」留一条逃生路。 */
+export declare function selfKillDenyReason(hostPid: number): string;
 /** deny 返回给模型的通用文案：不含命中规则（M2），但把模型行为收窄成确定动作。
  * 旧文案「choose a safer alternative or ask」是开放决策——v4-flash 面对"为什么被拒
  * （不可知）+ 替代方案（可能不存在）"会陷入长时间 reasoning；改为直接报告+询问，

@@ -13,6 +13,16 @@ export interface Config {
   enabled?: boolean
   /** 命中即 deny 的正则列表（硬规则，匹配 command/code 全文，区分大小写）。 */
   denyPatterns?: string[]
+  /** 自毁护栏：拦截 killall/pkill/taskkill/Stop-Process 整类终止命令及 kill 宿主 PID。默认开。 */
+  selfKillGuard?: boolean
+  /**
+   * 把每次决策写进 session 事件（`auto-approval/decision`）。默认关：
+   * 08-12 final 起 session 读取对未声明事件类型 fail-closed（
+   * `KNOWN_SESSION_EVENT_TYPES` 白名单，append() 无 ignorable 通道），
+   * 写 session 事件会使该 session 重启后无法打开。文件审计日志
+   * `~/.dsh/logs/auto-approval.log` 不受影响，始终记录。
+   */
+  auditSessionEvents?: boolean
   /** 命中即 ask（转人工审批）的正则列表。 */
   askPatterns?: string[]
   /** 直接放行的 tool name 白名单（如 read、grep、ls 类只读工具）。 */
@@ -46,7 +56,7 @@ export const Config: z<Config> = z.object({
   denyPatterns: z.array(z.string()).default([
     // 系统级破坏性操作
     'rm\\s+(-[a-z]*[fr][a-z]*\\s+)*/\\s*$',
-    'mkfs\\.', 'dd\\s+if=.*of=/dev/',
+    'mkfs\\.', 'dd\\s+if=.*of=/dev/', '>\\s*/dev/[a-zA-Z]+',
     // 管道直灌 shell（curl | sh 类供应链风险）
     'curl\\s+[^|]*\\|\\s*(ba)?sh',
     'wget\\s+[^|]*\\|\\s*(ba)?sh',
@@ -68,6 +78,8 @@ export const Config: z<Config> = z.object({
   autoApproveTools: z.array(z.string()).default([
     'read', 'grep', 'find', 'ls', 'list_files', 'glob', 'search_symbols',
   ]),
+  selfKillGuard: z.boolean().default(true),
+  auditSessionEvents: z.boolean().default(false),
   bashCommandPrefixes: z.array(z.string()).default([]),
   consecutiveDenyLimit: z.number().step(1).min(1).default(3),
   classifierFastProvider: z.string(),
@@ -112,6 +124,10 @@ export interface ResolvedConfig {
   /** bash 命令前缀白名单（前缀匹配 + 无 shell 元字符校验）。 */
   readonly bashCommandPrefixes: readonly string[]
   readonly consecutiveDenyLimit: number
+  /** 自毁护栏（拦截终止宿主进程的命令），默认开。 */
+  readonly selfKillGuard: boolean
+  /** session 事件审计写入开关（默认关——08-12 final 起写 session 事件会使日志无法打开）。 */
+  readonly auditSessionEvents: boolean
   /** 未配置 fast 路由时为 undefined（L1 关闭，L0 未命中即 allow）。 */
   readonly classifier?: ResolvedClassifierConfig
 }
@@ -159,6 +175,8 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     bashCommandPrefixes: string[]
     consecutiveDenyLimit: number
     classifierTimeoutMs: number
+    selfKillGuard: boolean
+    auditSessionEvents: boolean
   }
   const deny = compilePatterns('deny', resolved.denyPatterns)
   const ask = compilePatterns('ask', resolved.askPatterns)
@@ -182,6 +200,8 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     autoApproveTools: new Set(resolved.autoApproveTools),
     bashCommandPrefixes: resolved.bashCommandPrefixes,
     consecutiveDenyLimit: resolved.consecutiveDenyLimit,
+    selfKillGuard: resolved.selfKillGuard,
+    auditSessionEvents: resolved.auditSessionEvents,
     ...fast === undefined ? {} : {
       classifier: {
         fast,

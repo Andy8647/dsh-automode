@@ -68,7 +68,7 @@ function harness(config: Parameters<typeof apply>[1] = {}): Harness {
 
 describe('pre-execute 拦截（L0 规则引擎）', () => {
   it('命中 deny 规则 → deny，reason 不泄露 pattern，pattern 进审计', async () => {
-    const { run } = harness({ denyPatterns: ['top-secret-regex'] })
+    const { run } = harness({ denyPatterns: ['top-secret-regex'], auditSessionEvents: true })
     const { agent, audited } = fakeAgent()
     const decision = await run(makeExec('bash', { command: 'echo top-secret-regex' }, agent))
     expect(decision).toEqual({ kind: 'deny', reason: DENY_REASON })
@@ -132,7 +132,7 @@ describe('escalation 豁免（M5）', () => {
 
 describe('防失控（M6）', () => {
   it('连续 deny 达上限后本 turn 内白名单也转人工；新 turn 恢复', async () => {
-    const { run } = harness({ consecutiveDenyLimit: 1, denyPatterns: ['forbidden'] })
+    const { run } = harness({ consecutiveDenyLimit: 1, denyPatterns: ['forbidden'], auditSessionEvents: true })
     const { agent, events, audited } = fakeAgent([{
       type: 'turn/start', seq: 0, time: Date.now(), data: { turn: 1 },
     } as unknown as SessionEvent])
@@ -235,7 +235,7 @@ describe('L1 LLM classifier', () => {
   }
 
   it('无 ctx.llm 服务 → fail-closed 转 ask', async () => {
-    const { run } = harness(fastRoute)
+    const { run } = harness({ ...fastRoute, auditSessionEvents: true })
     const { agent, audited } = fakeAgent([userMessage('please deploy')])
     const decision = await run(makeExec('bash', { command: 'pnpm test' }, agent))
     expect(decision).toMatchObject({ kind: 'ask' })
@@ -250,7 +250,7 @@ describe('L1 LLM classifier', () => {
   })
 
   it('fast 判定 0 → allow；审计含路由与阶段', async () => {
-    const { ctx, run } = harness(fastRoute)
+    const { ctx, run } = harness({ ...fastRoute, auditSessionEvents: true })
     provideLlm(ctx, '0')
     const { agent, audited } = fakeAgent([userMessage('run the tests please')])
     expect(await run(makeExec('bash', { command: 'pnpm test' }, agent))).toBe(ALLOW)

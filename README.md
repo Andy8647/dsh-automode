@@ -27,6 +27,7 @@ model → tools/pre-execute waterfall
 硬性保证：
 
 - **L0 deny 双保险**：deny 规则除瀑布 listener 外还注册为 `ctx.tools.guard()` 单调 guard——在所有 pre-execute listener 之后执行，只能 deny 不能 allow，其它 prepend 插件旁路不掉
+- **自毁护栏**：`killall` / `pkill` / `taskkill` / `Stop-Process` **整类**终止命令（不管目标——`pkill -f` 匹配命令行，`pkill -f dsh`/`pkill -f auto-approval` 可绕过 node 名过滤直击宿主），以及 `kill <宿主PID>`，在 L0 硬底线直接 deny（`selfKillGuard`，默认开）——模型误发清理命令时不会把自己跑的环境杀掉。清理遗留进程走逃生通道：`kill <具体PID>` 只要不是宿主进程就放行，deny 文案会提示宿主 PID
 - **reason 不泄露规则**：deny/ask 返回给模型的是通用文案，命中的 pattern 只进审计事件和日志
 - **配置 fail-loud**：非法正则、不成对的 provider/model 在插件加载时直接 throw，不在运行时静默降级
 - **防失控**：同一 turn 内连续被 deny 达 `consecutiveDenyLimit`（默认 3）后暂停自动放行，本 turn 内一律转人工；turn 边界从 session log 的 `turn/start` 事件推导，新 turn 自动恢复。无 agent 的调用不参与计数
@@ -64,7 +65,7 @@ tool call ──→ L0 规则引擎（硬规则）
 - **`ask-user` 类工具的返回不算授权**：用户在交互工具里点了"是"只帮助 agent 决策，不视为对后续动作的显式授权——显式授权必须走正常聊天消息
 - **fail-closed**：超时、输出解析失败、模型不可用 → 一律转 `ask`（宁可问人，不默认放行）
 - **deny 后让 agent 自行调整**：拒绝返回通用文案 + 原因给模型，模型可换更安全的方式重试（如 force push 被拒 → 改推新分支）
-- **审计**：每次判定（allow/deny/ask + 理由 + 命中的规则）落 session 事件流，可回放
+- **审计**：每次判定（allow/deny/ask + 理由 + 命中的规则）落独立决策日志 `~/.dsh/logs/auto-approval.log`（始终）；session 事件写入默认关（`auditSessionEvents`，08-12 final 起写 session 事件会使日志无法打开）
 
 ### 防失控：连续拒绝转人工（替代 per-turn 限额）
 
@@ -165,6 +166,8 @@ auto-approval:
 | `askPatterns` | 见 `src/config.ts` | 正则，命中 command/code 即 `ask` 转人工 |
 | `autoApproveTools` | 只读工具列表 | tool name 白名单，直接放行 |
 | `bashCommandPrefixes` | 空 | bash 命令前缀白名单：以这些前缀开头且不含 shell 元字符（`\|` `>` `<` `;` `&` 反引号 `$(`）的 bash 命令跳过 L1 直接放行。tool 名白名单豁免不了 bash 子命令（`ls`/`cat` 都走 `bash` tool），这是只读 shell 命令的唯一免 L1 通道 |
+| `selfKillGuard` | `true` | 自毁护栏：拦截 `killall` / `pkill` / `taskkill` / `Stop-Process` 整类终止命令（目标不可控，`pkill -f <模式>` 可直击宿主命令行）及 `kill <宿主PID>`，L0 硬底线 deny。清理遗留进程用 `kill <具体PID>`（非宿主进程放行），deny 文案会提示宿主 PID |
+| `auditSessionEvents` | `false` | 是否把每次判定写入 session 事件（`auto-approval/decision`）。**默认关**：08-12 final 起 session 读取对未声明事件类型 fail-closed（`KNOWN_SESSION_EVENT_TYPES` 白名单，`Session.append()` 无 ignorable 通道），写 session 事件会使该 session 重启后无法打开。文件审计日志 `~/.dsh/logs/auto-approval.log` 始终记录，不受影响 |
 | `consecutiveDenyLimit` | `3` | 同一 turn 内累计被 deny N 次后暂停自动放行，强制用户介入（防失控；按 turn 计数，下条用户消息清零——注意是"回合内累计"不是"连续"） |
 | `classifierFastProvider` / `classifierFastModel` | 未设置 | L1 Stage 1 fast 过滤的模型路由（须成对）；设置后启用 L1 |
 | `classifierDeepProvider` / `classifierDeepModel` | 未设置 | L1 Stage 2 深查的模型路由（须成对），缺省沿用 fast |
@@ -173,18 +176,18 @@ auto-approval:
 
 ## 审计
 
-每次判定落两条可观测记录，都是 best-effort（失败只 warn，不影响审批决策）：
+每次判定落可观测记录（best-effort，失败只 warn，不影响审批决策）：
 
-1. **session 事件** `auto-approval/decision`（log-only，不进模型历史）：tool、callId、stage（`L0-deny` / `L0-ask` / `escalation-bypass` / `whitelist` / `L1-fast` / `L1-deep` / `L1-fail-closed` / `paused` / `default-allow`）、decision、命中的 pattern（pattern 的唯一落点）、L1 路由与耗时。查法：
-
-```sh
-zstd -dc ~/.dsh/sessions/--*/session-*/session.jsonl.zstd | rg auto-approval
-```
-
-2. **独立决策日志** `$DSH_HOME/logs/auto-approval.log`（默认 `~/.dsh/logs/auto-approval.log`）：每行一条 JSON。首行是 `auto-approval/armed` 配置摘要（直接回答「插件是否启用、规则数、L1 是否开」），之后每条是判定。UI 无通道渲染插件决策（host api-proxy 暴露白名单 + client toolviews 硬编码），文件日志是唯一不依赖 UI 的观测手段。查法：
+1. **独立决策日志** `$DSH_HOME/logs/auto-approval.log`（默认 `~/.dsh/logs/auto-approval.log`）：每行一条 JSON。首行是 `auto-approval/armed` 配置摘要（直接回答「插件是否启用、规则数、L1 是否开」），之后每条是判定。UI 无通道渲染插件决策（host api-proxy 暴露白名单 + client toolviews 硬编码），文件日志是唯一不依赖 UI 的观测手段。查法：
 
 ```sh
 tail -f ~/.dsh/logs/auto-approval.log
+```
+
+2. **session 事件** `auto-approval/decision`（log-only，不进模型历史），默认关（`auditSessionEvents: true` 开启）：tool、callId、stage、decision、命中的 pattern、L1 路由与耗时。⚠️ **08-12 final 起默认关闭**——session 读取对未声明事件类型 fail-closed（`KNOWN_SESSION_EVENT_TYPES` 白名单 + `Session.append()` 无 ignorable 通道），写自定义事件会使该 session 重启后无法打开；官方 registration surface 落地前请保持关闭。查法（仅 `auditSessionEvents: true` 的 session）：
+
+```sh
+zstd -dc ~/.dsh/sessions/--*/session-*/session.jsonl.zstd | rg auto-approval
 ```
 
 ## 真机验证（2026-08-08，Web 会话，approval policy=ask + workspace-write 沙箱）
