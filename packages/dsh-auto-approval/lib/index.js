@@ -6,6 +6,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { z as z$1 } from "zod";
 //#region lib/types/config.js
 /**
 * 配置 schema 与 fail-loud 解析：schemastery 负责默认值，{@link resolveConfig}
@@ -558,6 +559,84 @@ let AutoApprovalStatusService = (() => {
 	};
 })();
 //#endregion
+//#region lib/types/remote-manifest.js
+/**
+* Strict Typert host manifest for the auto-approval remote.
+*
+* The upstream build generates this artifact (`typert.host.js`) via
+* `@deepseek-ai/dsh-typert-generator`; this standalone repo hand-writes it
+* because the remote is a single method and the generator is a whole-workspace
+* analyzer.
+*
+* WHY a strict manifest instead of SRC fallback: the gateway's SRC fallback
+* discovers `@Remote` methods through the `remoteMethods` marker WeakMap — a
+* module-level table that must be the SAME `@deepseek-ai/dsh-typert-protocol`
+* instance in the plugin and the runtime. An out-of-tree plugin bundles its
+* own npm copy (rc.3), while the 08-12 final runtime uses its own workspace
+* copy, so the marker never crosses that boundary (dual-package hazard). The
+* strict manifest is registered into `ctx.typert` (the runtime's own registry)
+* and makes the gateway dispatch through the strict descriptor path, which
+* reads the instance-level `typertRemote` binding + service name — no shared
+* module state.
+*
+* The wire schema MUST stay in lockstep with:
+* - `AutoApprovalStatusService.getStatus` (this package's `remote.ts`), and
+* - the client companion's `@deepseek-ai/dsh-client-ui-auto-approval/src/client/remote.ts`.
+*/
+/** Wire snapshot of the auto-approval runtime state (mirror of `AutoApprovalStatus`). */
+const statusSchema = z$1.object({
+	enabled: z$1.boolean().readonly(),
+	denyPatterns: z$1.number().readonly(),
+	askPatterns: z$1.number().readonly(),
+	autoApproveTools: z$1.number().readonly(),
+	classifier: z$1.string().readonly(),
+	denials: z$1.number().readonly(),
+	paused: z$1.boolean().readonly()
+});
+/**
+* Host-face Typert contribution, registered into `ctx.typert` so the gateway
+* serves `autoApprovalStatus/getStatus` from the strict descriptor table.
+* `schemas`/`model` are empty: the registry only consumes them for reflection
+* tooling, and this plugin exposes no public schemas or model surface.
+*/
+const remoteManifest = {
+	package: "@deepseek-ai/dsh-auto-approval",
+	face: "host",
+	schemas: [],
+	model: {
+		services: [],
+		events: [],
+		objects: []
+	},
+	invocations: [{
+		id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus",
+		service: "autoApprovalStatus",
+		namespace: "autoApprovalStatus",
+		method: "getStatus",
+		invocation: { kind: "direct" },
+		scope: {
+			context: "agent",
+			wire: "agentId"
+		},
+		parameters: [{
+			name: "agent",
+			wire: "agentId",
+			source: "lookup",
+			lookup: "agent",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+				schema: z$1.intersection(z$1.string(), z$1.unknown())
+			}
+		}],
+		result: {
+			mode: "strict",
+			typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+			schema: statusSchema
+		}
+	}]
+};
+//#endregion
 //#region lib/types/tracker.js
 /**
 * 防失控计数（M6）：每 agent 的"当前 turn 内连续 deny 次数"。
@@ -702,6 +781,9 @@ function apply(ctx, config = {}) {
 		paused: tracker.isPaused(agent)
 	});
 	new AutoApprovalStatusService(ctx, readStatus);
+	ctx.inject(["typert"], (typertCtx) => {
+		typertCtx.get("typert").register(remoteManifest);
+	});
 	const arm = () => {
 		logger.info(`auto-approval armed: ${resolved.deny.length} deny / ${resolved.ask.length} ask patterns, ${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, consecutiveDenyLimit=${resolved.consecutiveDenyLimit}` + (resolved.classifier === void 0 ? ", L1 disabled" : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`));
 		auditArmed(ctx, {
@@ -727,7 +809,8 @@ function apply(ctx, config = {}) {
 			arm();
 		}
 	});
-	if (ctx.get("tools") !== void 0) ctx.tools.guard(createDenyGuard(() => resolved));
+	const tools = ctx.get("tools");
+	if (tools !== void 0) tools.guard(createDenyGuard(() => resolved));
 	else logger.warn("ctx.tools is not available; L0 deny guard NOT registered (pre-execute listener still active)");
 	ctx.on("tools/pre-execute", async (exec, next) => {
 		if (!resolved.enabled) return next();

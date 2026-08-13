@@ -1,0 +1,63 @@
+{
+  "name": "@deepseek-ai/dsh-client-ui-auto-approval",
+  "description": "Client companion for dsh-auto-approval: an auto-approval status chip beside the composer access-mode selector, fed by the host's autoApprovalStatus Typert remote",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "BSD-3-Clause",
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=0.0.0",
+    "@deepseek-ai/dsh-api-remotes": ">=0.0.0",
+    "@deepseek-ai/dsh-client-runtime": ">=0.0.0",
+    "@deepseek-ai/dsh-client-ui-conversation": ">=0.0.0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.0.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.0.0",
+    "react": ">=18.2.0"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1-rc.4",
+    "@deepseek-ai/dsh-api-remotes": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-client-runtime": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-typert-protocol": "^0.0.1-rc.5",
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.0"
+  }
+}

@@ -17,7 +17,7 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
-import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { PreToolDecision, ToolExecution, ToolGuard } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -30,6 +30,7 @@ import { audit, auditArmed } from './audit.ts'
 import type { AutoApprovalDecisionEvent, DecisionStage } from './audit.ts'
 import { AutoApprovalStatusService } from './remote.ts'
 import type { StatusReader } from './remote.ts'
+import { remoteManifest } from './remote-manifest.ts'
 import { DenialTracker } from './tracker.ts'
 
 export const name = 'auto-approval'
@@ -114,6 +115,23 @@ export function apply(ctx: Context, config: Config = {}): void {
   // 注册 remote 服务：Cordis Service 构造器自 provide，并绑定 Typert Gateway。
   new AutoApprovalStatusService(ctx, readStatus)
 
+  // 把严格描述符注册进运行时的 typert registry（strict dispatch）。
+  // 不能走 SRC fallback（`@Remote` marker 的 WeakMap 是模块级状态，独立
+  // 仓库的插件和运行时各持一份 `typert-protocol`，marker 跨不过去——
+  // 双包危害）；strict descriptor 直接写进运行时的 registry，绕开共享状态。
+  // `ctx.get` 读全局 store（`typert` 由 dsh-typert-registry 提供，是兄弟
+  // entry，走 per-fiber store 链会找不到），注册时机早于任何 client 调用。
+  // 把严格描述符注册进运行时的 typert registry（strict dispatch）。
+  // 不能走 SRC fallback（`@Remote` marker 的 WeakMap 是模块级状态，独立
+  // 仓库的插件和运行时各持一份 `typert-protocol`，marker 跨不过去——
+  // 双包危害）；strict descriptor 直接写进运行时的 registry，绕开共享状态。
+  // `typert` 由 dsh-typert-registry 提供（兄弟 entry），且激活晚于本插件，
+  // 用 `ctx.inject` 等它就绪后再注册。
+  ctx.inject(['typert'], (typertCtx) => {
+    const typert = typertCtx.get('typert') as unknown as { register: (contribution: unknown) => () => void }
+    typert.register(remoteManifest)
+  })
+
   const arm = (): void => {
     logger.info(
       `auto-approval armed: ${resolved.deny.length} deny / ${resolved.ask.length} ask patterns, ` +
@@ -152,9 +170,12 @@ export function apply(ctx: Context, config: Config = {}): void {
   // M3：L0 deny 注册为单调 guard——在所有 pre-execute listener 之后执行，
   // 只能 deny 不能 allow，其它 prepend 插件旁路不掉这条硬底线。guard 读
   // thunk，settings 热更新即时生效。ctx.tools 缺席（罕见：core 未加载
-  // tools）时降级为只挂瀑布并告警。
-  if (ctx.get('tools') !== undefined) {
-    ctx.tools.guard(createDenyGuard(() => resolved))
+  // tools）时降级为只挂瀑布并告警。用 `ctx.get('tools')` 而非 `ctx.tools`：
+  // tools 由 dsh-tools entry（兄弟 fiber）提供，per-fiber store 链找不到，
+  // 只有全局 store（`ctx.get`）能解析。
+  const tools = ctx.get('tools') as { guard: (guard: ToolGuard) => () => void } | undefined
+  if (tools !== undefined) {
+    tools.guard(createDenyGuard(() => resolved))
   } else {
     logger.warn('ctx.tools is not available; L0 deny guard NOT registered (pre-execute listener still active)')
   }
