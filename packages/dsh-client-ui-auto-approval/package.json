@@ -1,8 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-client-ui-auto-approval",
+  "name": "dsh-client-ui-auto-approval",
   "description": "Client companion for dsh-auto-approval: an auto-approval status chip beside the composer access-mode selector, fed by the host's autoApprovalStatus Typert remote",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -23,6 +22,10 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Andy8647/dsh-auto-approval.git"
+  },
   "dsh": {
     "client": {
       "platform": "web",

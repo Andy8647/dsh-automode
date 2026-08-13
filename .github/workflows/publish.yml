@@ -1,0 +1,44 @@
+name: publish
+
+# Publish both packages to npm (dsh-auto-approval + dsh-client-ui-auto-approval).
+# Trigger: manual dispatch, or a push of a `v*` tag (release flow).
+#
+# Requires the repository secret `NPM_TOKEN` — a npm access token with
+# publish rights for the package names below (generate at
+# https://www.npmjs.com/settings/<user>/tokens).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build both packages
+        run: pnpm -r run build
+
+      - name: Publish to npm
+        run: pnpm -r publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

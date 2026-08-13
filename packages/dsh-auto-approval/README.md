@@ -21,17 +21,16 @@ DSH 权限自动审批插件：给 approval policy 加第三档 `auto`，classif
 
 ## 安装
 
-插件**未发布 npm**，仓库已提交构建产物（`lib/`），clone 后直接可用。运行时依赖 `@deepseek-ai/*` 由 dsh 本体提供。
+插件已发布 npm（`dsh-auto-approval`），装的是构建产物，直接可用：
 
 ```sh
-# 1. clone
-gh repo clone Andy8647/dsh-auto-approval
+# 装到已有可用的 profile（⚠️ 别新建 profile：默认只有 base 层、无 UI，会静默挂起）
+dsh plugin --profile web add dsh-auto-approval
 
-# 2. 装到已有可用的 profile（⚠️ 别新建 profile：默认只有 base 层、无 UI，会静默挂起）
-dsh plugin --profile web add link:/<你的clone路径>/dsh-auto-approval/packages/dsh-auto-approval
-
-# 3. 重启 dsh
+# 重启 dsh
 ```
+
+源码方式（开发/自建）：clone 仓库后 `dsh plugin --profile web add link:/<路径>/packages/dsh-auto-approval`（依赖从 npm 安装，`@deepseek-ai/*` 运行时依赖由 dsh 本体提供）。
 
 ## 配置
 
@@ -96,7 +95,7 @@ pnpm run test         # vitest
 pnpm run build        # tsc → tsdown
 ```
 
-依赖从 npm 安装（rc.5 系；`@deepseek-ai/*` 运行时依赖由 dsh 本体提供，若 npm 侧仍为私有包需配置 `NPM_TOKEN`）。
+依赖从 npm 安装（`@deepseek-ai/*` 运行时依赖由 dsh 本体提供）。
 
 ## License
 

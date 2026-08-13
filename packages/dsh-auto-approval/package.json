@@ -1,8 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-auto-approval",
-  "description": "Automated tool-call approval for DeepSeek Harness: an `auto` tier for approval policy that classifies each tool call as allow / deny / ask before dispatch",
-  "version": "0.0.1",
-  "private": true,
+  "name": "dsh-auto-approval",
+  "description": "Automated tool-call approval for DeepSeek Harness: an `auto` tier for approval policy that classifies each tool call as allow / deny before dispatch",
+  "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -21,6 +20,10 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Andy8647/dsh-auto-approval.git"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
