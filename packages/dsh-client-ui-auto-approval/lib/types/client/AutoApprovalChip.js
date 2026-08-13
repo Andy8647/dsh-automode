@@ -60,17 +60,9 @@ function shortModel(classifier) {
     const slash = classifier.lastIndexOf('/');
     return slash >= 0 ? classifier.slice(slash + 1) : classifier;
 }
-/** One-line tooltip: concise armed state + cumulative counts (full config lives in the dialog). */
+/** One-line tooltip: cumulative counts only (full config lives in the dialog). */
 function describe(status) {
-    const counts = countLine(status);
-    if (!status.enabled)
-        return `auto-approval off — ${counts}`;
-    const parts = [
-        `${status.denyPatterns + status.askPatterns} rules`,
-        status.classifier === 'disabled' ? 'no review model' : `model ${shortModel(status.classifier)}`,
-        counts,
-    ];
-    return `auto-approval on — ${parts.join(' · ')}`;
+    return countLine(status);
 }
 /* ------------------------------------------------------------------ */
 /* Decision table pieces                                               */
@@ -303,7 +295,7 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
     }
     else {
         dot = SUCCESS;
-        label = state.status.denials > 0 ? `AA ·${state.status.denials}` : 'AA on';
+        label = 'AA on';
         title = describe(state.status);
     }
     return (_jsxs(_Fragment, { children: [_jsx("style", { children: DIALOG_WIDTH_CSS }), _jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: "Auto-approval", className: "aa-modal-wide", contentClassName: "aa-modal-flush", children: state.kind === 'status'

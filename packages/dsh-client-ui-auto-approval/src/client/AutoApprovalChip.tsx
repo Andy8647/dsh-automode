@@ -81,16 +81,9 @@ function shortModel(classifier: string): string {
   return slash >= 0 ? classifier.slice(slash + 1) : classifier
 }
 
-/** One-line tooltip: concise armed state + cumulative counts (full config lives in the dialog). */
+/** One-line tooltip: cumulative counts only (full config lives in the dialog). */
 function describe(status: AutoApprovalStatus): string {
-  const counts = countLine(status)
-  if (!status.enabled) return `auto-approval off — ${counts}`
-  const parts = [
-    `${status.denyPatterns + status.askPatterns} rules`,
-    status.classifier === 'disabled' ? 'no review model' : `model ${shortModel(status.classifier)}`,
-    counts,
-  ]
-  return `auto-approval on — ${parts.join(' · ')}`
+  return countLine(status)
 }
 
 /* ------------------------------------------------------------------ */
@@ -458,7 +451,7 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
     title = describe(state.status)
   } else {
     dot = SUCCESS
-    label = state.status.denials > 0 ? `AA ·${state.status.denials}` : 'AA on'
+    label = 'AA on'
     title = describe(state.status)
   }
 

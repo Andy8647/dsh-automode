@@ -61,15 +61,9 @@ window.__ModuleLoader__.load({
 			const slash = classifier.lastIndexOf("/");
 			return slash >= 0 ? classifier.slice(slash + 1) : classifier;
 		}
-		/** One-line tooltip: concise armed state + cumulative counts (full config lives in the dialog). */
+		/** One-line tooltip: cumulative counts only (full config lives in the dialog). */
 		function describe(status) {
-			const counts = countLine(status);
-			if (!status.enabled) return `auto-approval off — ${counts}`;
-			return `auto-approval on — ${[
-				`${status.denyPatterns + status.askPatterns} rules`,
-				status.classifier === "disabled" ? "no review model" : `model ${shortModel(status.classifier)}`,
-				counts
-			].join(" · ")}`;
+			return countLine(status);
 		}
 		const CELL = {
 			padding: "8px 10px",
@@ -502,7 +496,7 @@ window.__ModuleLoader__.load({
 				title = describe(state.status);
 			} else {
 				dot = SUCCESS;
-				label = state.status.denials > 0 ? `AA ·${state.status.denials}` : "AA on";
+				label = "AA on";
 				title = describe(state.status);
 			}
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
