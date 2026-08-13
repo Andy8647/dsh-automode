@@ -1,24 +1,26 @@
 /**
  * Composer status chip for the auto-approval runtime. Reads the host state via
- * the injected `getStatus` remote call and renders a compact pill: a color-coded
- * dot plus a short state word, with cumulative stats in the hover tooltip.
+ * the injected `getStatus` remote call and renders an official Pill: a
+ * token-colored state dot plus a short state word, with cumulative stats in
+ * the hover Tooltip.
  *
- * Clicking the chip opens a dialog (portaled overlay, inline styles) showing:
+ * Clicking the chip opens the official Modal showing:
  * - the on/off toggle (drives the host `setEnabled` remote, persisted via
  *   settings when available);
  * - cumulative counts (approved / denied / asked);
- * - a scrollable table of the recent decisions (time, tool, stage, verdict,
- *   matched pattern / rationale).
+ * - the recent decisions table (time, tool, stage, verdict, matched
+ *   pattern / rationale).
  *
- * Inline styles on purpose (no CSS-module dependency): the standalone client
- * bundle skips the upstream lightningcss pipeline. The overlay mirrors the
- * upstream Modal tokens (mask + centered card) without importing the modal's
- * CSS module.
+ * Theming: every color resolves through `--dsw-alias-*` semantic tokens
+ * (`--dsw-static-*` only where no alias exists), which `ui-theme` redefines
+ * under `body[data-ds-dark-theme]` — dark/light switching is automatic.
+ * Official components (Pill / Tooltip / Modal / Button) ride the platform
+ * module table, so no CSS-module pipeline is needed here; locally composed
+ * parts (stat tiles, table, dot) use inline styles over the same tokens.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { Button, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Modal, Pill, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the ui-conversation SlotMap merge (the input.left seat + SessionStandardProps).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -36,151 +38,110 @@ type ChipState =
   | { readonly kind: 'error'; readonly message: string }
   | { readonly kind: 'status'; readonly status: AutoApprovalStatus }
 
-const DOT: React.CSSProperties = {
-  width: 7,
-  height: 7,
-  borderRadius: '50%',
-  flexShrink: 0,
-}
+/* ------------------------------------------------------------------ */
+/* Official design tokens (alias layer: theme switching is automatic). */
+/* ------------------------------------------------------------------ */
 
-const PILL: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 5,
-  height: 22,
-  padding: '0 8px',
-  borderRadius: 11,
-  border: '1px solid var(--color-border, rgba(128,128,128,0.4))',
-  background: 'var(--color-bg-subtle, transparent)',
-  color: 'var(--color-text-secondary, inherit)',
-  fontSize: 11,
-  lineHeight: '22px',
-  whiteSpace: 'nowrap',
-  cursor: 'pointer',
-  userSelect: 'none',
-}
+const SUCCESS = 'var(--dsw-alias-state-success-primary)'
+const ERROR = 'var(--dsw-alias-state-error-primary)'
+const WARN = 'var(--dsw-alias-state-warn-primary)'
+const LABEL_PRIMARY = 'var(--dsw-alias-label-primary)'
+const LABEL_SECONDARY = 'var(--dsw-alias-label-secondary)'
+const LABEL_CAPTION = 'var(--dsw-alias-label-caption)'
+const BORDER_L1 = 'var(--dsw-alias-border-l1)'
+const BORDER_L2 = 'var(--dsw-alias-border-l2)'
+const BG_LAYER_2 = 'var(--dsw-alias-bg-layer-2)'
+const BG_LAYER_3 = 'var(--dsw-alias-bg-layer-3)'
+const MONO_FONT = 'var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)'
+
+/* ------------------------------------------------------------------ */
+/* Text helpers                                                        */
+/* ------------------------------------------------------------------ */
 
 /** Cumulative counts as a compact "✓ n · ✗ n · ? n" line for the tooltip. */
 function countLine(status: AutoApprovalStatus): string {
   return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied · ? ${status.asks} asked`
 }
 
+/** Armed-config summary (no counts; the dialog shows those as tiles). */
+function summaryLine(status: AutoApprovalStatus): string {
+  const parts = [
+    `L0: ${status.denyPatterns} deny / ${status.askPatterns} ask patterns`,
+    `${status.autoApproveTools} auto-approve tools`,
+    status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
+  ]
+  return parts.join(' · ')
+}
+
 /** One human-readable tooltip line: config summary + cumulative stats. */
 function describe(status: AutoApprovalStatus): string {
   if (!status.enabled) return `auto-approval disabled — ${countLine(status)}`
-  const parts = [
-    `L0: ${status.denyPatterns} deny / ${status.askPatterns} ask`,
-    `${status.autoApproveTools} auto-approve tools`,
-    status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
-    countLine(status),
-  ]
+  const parts = [summaryLine(status), countLine(status)]
   if (status.paused) parts.push('paused (deny limit reached)')
   if (status.denials > 0) parts.push(`${status.denials} denial(s) this turn`)
   return `auto-approval armed — ${parts.join(' · ')}`
 }
 
 /* ------------------------------------------------------------------ */
-/* Dialog (portaled overlay, inline styles)                            */
+/* Decision table pieces                                               */
 /* ------------------------------------------------------------------ */
 
-const OVERLAY: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  zIndex: 1000,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 24,
-  background: 'rgba(0,0,0,0.35)',
+const CELL: React.CSSProperties = {
+  padding: '6px 8px',
+  fontSize: 11,
+  lineHeight: '16px',
+  textAlign: 'left',
+  verticalAlign: 'top',
 }
 
-const DIALOG: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  width: 560,
-  maxWidth: '100%',
-  maxHeight: '80vh',
-  overflow: 'hidden',
-  borderRadius: 16,
-  border: '1px solid var(--color-border, rgba(128,128,128,0.4))',
-  background: 'var(--color-bg, #fff)',
-  boxShadow: '0 16px 48px rgba(0,0,0,0.25)',
+const HEADER_CELL: React.CSSProperties = {
+  ...CELL,
+  fontWeight: 600,
+  color: LABEL_SECONDARY,
+  borderBottom: `1px solid ${BORDER_L2}`,
+  // Sticky header stays readable while the table body scrolls; the fill must
+  // be opaque or scrolled rows would bleed through.
+  position: 'sticky',
+  top: 0,
+  background: BG_LAYER_2,
 }
 
-const DIALOG_HEADER: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '12px 16px',
-  borderBottom: '1px solid var(--color-border, rgba(128,128,128,0.25))',
-}
-
-const DIALOG_BODY: React.CSSProperties = {
-  padding: 16,
-  overflowY: 'auto',
-}
-
-/** Row of the recent-decisions table. */
-interface DecisionRowProps {
-  readonly record: DecisionRecord
-}
-
-const STAGE_COLORS: Record<string, string> = {
-  'L0-deny': '#ef4444',
-  'L0-selfkill': '#ef4444',
-  'L1-deep': '#ef4444',
-  'L0-ask': '#f59e0b',
-  'L1-fast': '#22c55e',
-  'whitelist': '#22c55e',
-  'escalation-bypass': '#22c55e',
-  'default-allow': '#22c55e',
-  'L1-fail-closed': '#f59e0b',
-  'paused': '#f59e0b',
-}
-
-/** Verdict badge: colored text chip matching the decision's meaning. */
+/** Verdict label: colored by the official state-token triad. */
 function VerdictBadge({ decision }: { decision: DecisionRecord['decision'] }): ReactNode {
-  const map: Record<DecisionRecord['decision'], { text: string; color: string }> = {
-    allow: { text: 'allow', color: '#22c55e' },
-    deny: { text: 'deny', color: '#ef4444' },
-    ask: { text: 'ask', color: '#f59e0b' },
-  }
-  const { text, color } = map[decision]
-  return (
-    <span style={{ color, fontWeight: 600 }}>{text}</span>
-  )
+  const color = decision === 'allow' ? SUCCESS : decision === 'deny' ? ERROR : WARN
+  return <span style={{ color, fontWeight: 600, whiteSpace: 'nowrap' }}>{decision}</span>
 }
 
-function DecisionRow({ record }: DecisionRowProps): ReactNode {
+function DecisionRow({ record }: { readonly record: DecisionRecord }): ReactNode {
   const detail = record.pattern !== undefined ? `pattern /${record.pattern}/` : (record.detail ?? '')
   const time = new Date(record.time)
   const timeText = Number.isNaN(time.getTime())
     ? record.time
-    : time.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  const stageColor = STAGE_COLORS[record.stage] ?? undefined
+    : time.toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
   return (
-    <tr style={{ borderTop: '1px solid var(--color-border, rgba(128,128,128,0.15))' }}>
-      <td style={{ ...CELL, whiteSpace: 'nowrap', color: 'var(--color-text-secondary, inherit)' }}>{timeText}</td>
-      <td style={{ ...CELL, fontFamily: 'var(--font-mono, ui-monospace, monospace)' }}>{record.tool}</td>
-      <td style={{ ...CELL, whiteSpace: 'nowrap', ...(stageColor !== undefined ? { color: stageColor } : {}) }}>
+    <tr style={{ borderTop: `1px solid ${BORDER_L1}` }}>
+      <td style={{ ...CELL, whiteSpace: 'nowrap', color: LABEL_CAPTION, fontFamily: MONO_FONT }}>{timeText}</td>
+      <td style={{ ...CELL, whiteSpace: 'nowrap', color: LABEL_PRIMARY, fontFamily: MONO_FONT }}>{record.tool}</td>
+      <td style={{
+        ...CELL, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+      }} title={record.stage}>
         {record.stage}
       </td>
       <td style={CELL}><VerdictBadge decision={record.decision} /></td>
-      <td style={{ ...CELL, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--color-text-secondary, inherit)' }} title={detail}>
+      <td style={{
+        ...CELL, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+      }} title={detail}>
         {detail}
       </td>
     </tr>
   )
 }
 
-const CELL: React.CSSProperties = {
-  padding: '5px 8px',
-  fontSize: 11,
-  textAlign: 'left',
-  verticalAlign: 'top',
-}
+/* ------------------------------------------------------------------ */
+/* Stat tile                                                           */
+/* ------------------------------------------------------------------ */
 
-/** Stat tile: a number with a colored label, used for the three cumulative counts. */
+/** Stat tile: raised surface (layer-3) on the layer-2 dialog card. */
 function StatTile({ label, value, color }: { label: string; value: number; color: string }): ReactNode {
   return (
     <div style={{
@@ -190,104 +151,121 @@ function StatTile({ label, value, color }: { label: string; value: number; color
       alignItems: 'center',
       gap: 2,
       padding: '10px 8px',
-      borderRadius: 10,
-      border: '1px solid var(--color-border, rgba(128,128,128,0.25))',
-      background: 'var(--color-bg-subtle, transparent)',
+      borderRadius: 12,
+      border: `1px solid ${BORDER_L1}`,
+      background: BG_LAYER_3,
     }}>
-      <span style={{ fontSize: 20, fontWeight: 700, color, lineHeight: 1.2 }}>{value}</span>
-      <span style={{ fontSize: 10, color: 'var(--color-text-secondary, inherit)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <span style={{ fontSize: 20, lineHeight: '24px', fontWeight: 600, color }}>{value}</span>
+      <span style={{ fontSize: 11, lineHeight: '16px', color: LABEL_CAPTION }}>
         {label}
       </span>
     </div>
   )
 }
 
-/** Dialog body content: toggle row + stat tiles + decision table. */
+/* ------------------------------------------------------------------ */
+/* Dialog body                                                         */
+/* ------------------------------------------------------------------ */
+
 function DialogContent({
-  status, history, toggling, onToggle, onClose,
+  status, history, toggling, error, onToggle,
 }: {
   status: AutoApprovalStatus
   history: readonly DecisionRecord[]
   toggling: boolean
+  error: string | undefined
   onToggle: () => void
-  onClose: () => void
 }): ReactNode {
   return (
     <>
-      <div style={DIALOG_HEADER}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Auto-approval</span>
-        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
-      </div>
-      <div style={DIALOG_BODY}>
-        {/* Toggle row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>
-              {status.enabled ? 'Enabled' : 'Disabled'}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-secondary, inherit)' }}>
-              {status.enabled
-                ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
-                : 'All calls fall through to the normal approval flow.'}
-            </div>
+      {/* Toggle row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, lineHeight: '22px', fontWeight: 600, color: LABEL_PRIMARY }}>
+            {status.enabled ? 'Enabled' : 'Disabled'}
           </div>
-          <Button
-            variant={status.enabled ? 'primary' : 'outline'}
-            size="sm"
-            disabled={toggling}
-            onClick={onToggle}
-          >
-            {status.enabled ? 'Turn off' : 'Turn on'}
-          </Button>
+          <div style={{ fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }}>
+            {status.enabled
+              ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
+              : 'All calls fall through to the normal approval flow.'}
+          </div>
         </div>
+        <Button
+          variant={status.enabled ? 'outline' : 'primary'}
+          size="sm"
+          disabled={toggling}
+          onClick={onToggle}
+        >
+          {status.enabled ? 'Turn off' : 'Turn on'}
+        </Button>
+      </div>
 
-        {/* Cumulative counts */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <StatTile label="Approved" value={status.approvals} color="#22c55e" />
-          <StatTile label="Denied" value={status.totalDenials} color="#ef4444" />
-          <StatTile label="Asked" value={status.asks} color="#f59e0b" />
+      {/* Paused notice */}
+      {status.paused && (
+        <div style={{ marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }}>
+          Paused: deny limit reached this turn — calls require manual approval.
         </div>
+      )}
 
-        {/* Recent decisions table */}
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-          Recent decisions
-          {history.length > 0 && (
-            <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--color-text-secondary, inherit)', marginLeft: 6 }}>
-              {history.length} shown (newest first)
-            </span>
-          )}
-        </div>
-        {history.length === 0
-          ? (
-            <div style={{ fontSize: 11, color: 'var(--color-text-secondary, inherit)', padding: '12px 0' }}>
-              No auto-approval decisions recorded for this session yet.
-            </div>
-          )
-          : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+      {/* Cumulative counts */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <StatTile label="Approved" value={status.approvals} color={SUCCESS} />
+        <StatTile label="Denied" value={status.totalDenials} color={ERROR} />
+        <StatTile label="Asked" value={status.asks} color={WARN} />
+      </div>
+
+      {/* Recent decisions */}
+      <div style={{ marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }}>
+        Recent decisions
+        {history.length > 0 && (
+          <span style={{ fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }}>
+            {history.length} shown · newest first
+          </span>
+        )}
+      </div>
+      {history.length === 0
+        ? (
+          <div style={{ padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }}>
+            No auto-approval decisions recorded for this session yet.
+          </div>
+        )
+        : (
+          // The official dialog is min(380px, 100%) wide; the table scrolls
+          // vertically inside the card rather than stretching it.
+          <div style={{ marginTop: 6, maxHeight: '38vh', overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={{ ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }}>Time</th>
-                  <th style={{ ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }}>Tool</th>
-                  <th style={{ ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }}>Stage</th>
-                  <th style={{ ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }}>Verdict</th>
-                  <th style={{ ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }}>Detail</th>
+                  <th style={HEADER_CELL}>Time</th>
+                  <th style={HEADER_CELL}>Tool</th>
+                  <th style={HEADER_CELL}>Stage</th>
+                  <th style={HEADER_CELL}>Verdict</th>
+                  <th style={HEADER_CELL}>Detail</th>
                 </tr>
               </thead>
               <tbody>
                 {history.map((record, index) => <DecisionRow key={index} record={record} />)}
               </tbody>
             </table>
-          )}
-      </div>
+          </div>
+        )}
+
+      {error !== undefined && (
+        <div style={{ marginTop: 10, fontSize: 12, lineHeight: '18px', color: ERROR }}>{error}</div>
+      )}
     </>
   )
 }
 
+/* ------------------------------------------------------------------ */
+/* Chip                                                                */
+/* ------------------------------------------------------------------ */
+
 /**
  * The status pill. It owns its polling and is intentionally silent on failure:
- * a failed remote read renders a red "AA" with the error in the tooltip rather
- * than breaking the composer. Clicking opens the dialog (toggle + history).
+ * a failed remote read renders an error-colored "AA" with the error in the
+ * tooltip rather than breaking the composer. Clicking opens the dialog
+ * (toggle + history).
  */
 export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoApprovalChipProps) {
   const [state, setState] = useState<ChipState>({ kind: 'loading' })
@@ -346,16 +324,6 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
     }
   }, [dialogOpen, getHistory])
 
-  // Close on Escape, mirroring the upstream Modal behavior.
-  useEffect(() => {
-    if (!dialogOpen) return
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setDialogOpen(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [dialogOpen])
-
   const toggle = useCallback((): void => {
     if (toggling) return
     const current = state.kind === 'status' ? state.status.enabled : false
@@ -376,75 +344,72 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
     )
   }, [state, toggling, setEnabled])
 
-  let dot = '#9ca3af'
+  let dot = LABEL_CAPTION
   let label = 'AA'
   let title = 'auto-approval'
 
   if (state.kind === 'loading') {
-    dot = '#9ca3af'
+    dot = LABEL_CAPTION
     label = 'AA'
     title = 'auto-approval: loading…'
   } else if (state.kind === 'error') {
-    dot = '#ef4444'
+    dot = ERROR
     label = 'AA'
     title = `auto-approval: ${state.message}`
   } else if (!state.status.enabled) {
-    dot = '#9ca3af'
+    dot = LABEL_CAPTION
     label = 'AA off'
     title = describe(state.status)
   } else if (state.status.paused) {
-    dot = '#f59e0b'
+    dot = WARN
     label = 'AA paused'
     title = describe(state.status)
   } else {
-    dot = '#22c55e'
+    dot = SUCCESS
     label = state.status.denials > 0 ? `AA ·${state.status.denials}` : 'AA on'
     title = describe(state.status)
   }
 
-  const chip = (
-    <span
-      style={PILL}
-      title={title}
-      aria-label={title}
-      role="button"
-      tabIndex={0}
-      aria-haspopup="dialog"
-      onClick={() => setDialogOpen(true)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          setDialogOpen(true)
-        }
-      }}
-    >
-      <span style={{ ...DOT, background: dot }} aria-hidden />
-      {label}
-    </span>
-  )
-
   return (
     <>
-      <Tooltip label={title} side="bottom" delayMs={300}>
-        {chip}
+      {/*
+       * The Tooltip anchor must be a host element: Tooltip attaches its ref
+       * via cloneElement, and the official Pill is a function component
+       * without forwardRef — wrapping it in this span keeps the tooltip
+       * working while Pill provides the official capsule visuals and hover.
+       */}
+      <Tooltip label={title} side="top" delayMs={300}>
+        <span style={{ display: 'inline-flex' }}>
+          <Pill onClick={() => setDialogOpen(true)} aria-label={title} aria-haspopup="dialog">
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }} aria-hidden />
+            {label}
+          </Pill>
+        </span>
       </Tooltip>
-      {dialogOpen && state.kind === 'status' && createPortal(
-        <div style={OVERLAY} onClick={() => setDialogOpen(false)}>
-          <div style={DIALOG} role="dialog" aria-modal="true" aria-label="Auto-approval" onClick={(e) => e.stopPropagation()}>
+      <Modal
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title="Auto-approval"
+        {...state.kind === 'status' ? { description: summaryLine(state.status) } : {}}
+      >
+        {state.kind === 'status'
+          ? (
             <DialogContent
               status={state.status}
               history={history}
               toggling={toggling}
+              error={dialogError}
               onToggle={toggle}
-              onClose={() => setDialogOpen(false)}
             />
-            {dialogError !== undefined && (
-              <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#ef4444' }}>{dialogError}</div>
-            )}
-          </div>
-        </div>,
-        document.body,
-      )}
+          )
+          : (
+            <div style={{ fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }}>
+              {state.kind === 'loading'
+                ? 'Loading auto-approval status…'
+                : `Status unavailable: ${state.message}`}
+            </div>
+          )}
+      </Modal>
     </>
   )
 }

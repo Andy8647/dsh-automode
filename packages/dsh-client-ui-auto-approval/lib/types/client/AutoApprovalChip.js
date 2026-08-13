@@ -1,62 +1,63 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 /**
  * Composer status chip for the auto-approval runtime. Reads the host state via
- * the injected `getStatus` remote call and renders a compact pill: a color-coded
- * dot plus a short state word, with cumulative stats in the hover tooltip.
+ * the injected `getStatus` remote call and renders an official Pill: a
+ * token-colored state dot plus a short state word, with cumulative stats in
+ * the hover Tooltip.
  *
- * Clicking the chip opens a dialog (portaled overlay, inline styles) showing:
+ * Clicking the chip opens the official Modal showing:
  * - the on/off toggle (drives the host `setEnabled` remote, persisted via
  *   settings when available);
  * - cumulative counts (approved / denied / asked);
- * - a scrollable table of the recent decisions (time, tool, stage, verdict,
- *   matched pattern / rationale).
+ * - the recent decisions table (time, tool, stage, verdict, matched
+ *   pattern / rationale).
  *
- * Inline styles on purpose (no CSS-module dependency): the standalone client
- * bundle skips the upstream lightningcss pipeline. The overlay mirrors the
- * upstream Modal tokens (mask + centered card) without importing the modal's
- * CSS module.
+ * Theming: every color resolves through `--dsw-alias-*` semantic tokens
+ * (`--dsw-static-*` only where no alias exists), which `ui-theme` redefines
+ * under `body[data-ds-dark-theme]` — dark/light switching is automatic.
+ * Official components (Pill / Tooltip / Modal / Button) ride the platform
+ * module table, so no CSS-module pipeline is needed here; locally composed
+ * parts (stat tiles, table, dot) use inline styles over the same tokens.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Button, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, Modal, Pill, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives';
 /** Poll cadence while the chip stays mounted (no event forwarding for third-party remotes). */
 const POLL_MS = 2000;
-const DOT = {
-    width: 7,
-    height: 7,
-    borderRadius: '50%',
-    flexShrink: 0,
-};
-const PILL = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 5,
-    height: 22,
-    padding: '0 8px',
-    borderRadius: 11,
-    border: '1px solid var(--color-border, rgba(128,128,128,0.4))',
-    background: 'var(--color-bg-subtle, transparent)',
-    color: 'var(--color-text-secondary, inherit)',
-    fontSize: 11,
-    lineHeight: '22px',
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-    userSelect: 'none',
-};
+/* ------------------------------------------------------------------ */
+/* Official design tokens (alias layer: theme switching is automatic). */
+/* ------------------------------------------------------------------ */
+const SUCCESS = 'var(--dsw-alias-state-success-primary)';
+const ERROR = 'var(--dsw-alias-state-error-primary)';
+const WARN = 'var(--dsw-alias-state-warn-primary)';
+const LABEL_PRIMARY = 'var(--dsw-alias-label-primary)';
+const LABEL_SECONDARY = 'var(--dsw-alias-label-secondary)';
+const LABEL_CAPTION = 'var(--dsw-alias-label-caption)';
+const BORDER_L1 = 'var(--dsw-alias-border-l1)';
+const BORDER_L2 = 'var(--dsw-alias-border-l2)';
+const BG_LAYER_2 = 'var(--dsw-alias-bg-layer-2)';
+const BG_LAYER_3 = 'var(--dsw-alias-bg-layer-3)';
+const MONO_FONT = 'var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)';
+/* ------------------------------------------------------------------ */
+/* Text helpers                                                        */
+/* ------------------------------------------------------------------ */
 /** Cumulative counts as a compact "✓ n · ✗ n · ? n" line for the tooltip. */
 function countLine(status) {
     return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied · ? ${status.asks} asked`;
+}
+/** Armed-config summary (no counts; the dialog shows those as tiles). */
+function summaryLine(status) {
+    const parts = [
+        `L0: ${status.denyPatterns} deny / ${status.askPatterns} ask patterns`,
+        `${status.autoApproveTools} auto-approve tools`,
+        status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
+    ];
+    return parts.join(' · ');
 }
 /** One human-readable tooltip line: config summary + cumulative stats. */
 function describe(status) {
     if (!status.enabled)
         return `auto-approval disabled — ${countLine(status)}`;
-    const parts = [
-        `L0: ${status.denyPatterns} deny / ${status.askPatterns} ask`,
-        `${status.autoApproveTools} auto-approve tools`,
-        status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
-        countLine(status),
-    ];
+    const parts = [summaryLine(status), countLine(status)];
     if (status.paused)
         parts.push('paused (deny limit reached)');
     if (status.denials > 0)
@@ -64,79 +65,47 @@ function describe(status) {
     return `auto-approval armed — ${parts.join(' · ')}`;
 }
 /* ------------------------------------------------------------------ */
-/* Dialog (portaled overlay, inline styles)                            */
+/* Decision table pieces                                               */
 /* ------------------------------------------------------------------ */
-const OVERLAY = {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 1000,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    background: 'rgba(0,0,0,0.35)',
+const CELL = {
+    padding: '6px 8px',
+    fontSize: 11,
+    lineHeight: '16px',
+    textAlign: 'left',
+    verticalAlign: 'top',
 };
-const DIALOG = {
-    display: 'flex',
-    flexDirection: 'column',
-    width: 560,
-    maxWidth: '100%',
-    maxHeight: '80vh',
-    overflow: 'hidden',
-    borderRadius: 16,
-    border: '1px solid var(--color-border, rgba(128,128,128,0.4))',
-    background: 'var(--color-bg, #fff)',
-    boxShadow: '0 16px 48px rgba(0,0,0,0.25)',
+const HEADER_CELL = {
+    ...CELL,
+    fontWeight: 600,
+    color: LABEL_SECONDARY,
+    borderBottom: `1px solid ${BORDER_L2}`,
+    // Sticky header stays readable while the table body scrolls; the fill must
+    // be opaque or scrolled rows would bleed through.
+    position: 'sticky',
+    top: 0,
+    background: BG_LAYER_2,
 };
-const DIALOG_HEADER = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '12px 16px',
-    borderBottom: '1px solid var(--color-border, rgba(128,128,128,0.25))',
-};
-const DIALOG_BODY = {
-    padding: 16,
-    overflowY: 'auto',
-};
-const STAGE_COLORS = {
-    'L0-deny': '#ef4444',
-    'L0-selfkill': '#ef4444',
-    'L1-deep': '#ef4444',
-    'L0-ask': '#f59e0b',
-    'L1-fast': '#22c55e',
-    'whitelist': '#22c55e',
-    'escalation-bypass': '#22c55e',
-    'default-allow': '#22c55e',
-    'L1-fail-closed': '#f59e0b',
-    'paused': '#f59e0b',
-};
-/** Verdict badge: colored text chip matching the decision's meaning. */
+/** Verdict label: colored by the official state-token triad. */
 function VerdictBadge({ decision }) {
-    const map = {
-        allow: { text: 'allow', color: '#22c55e' },
-        deny: { text: 'deny', color: '#ef4444' },
-        ask: { text: 'ask', color: '#f59e0b' },
-    };
-    const { text, color } = map[decision];
-    return (_jsx("span", { style: { color, fontWeight: 600 }, children: text }));
+    const color = decision === 'allow' ? SUCCESS : decision === 'deny' ? ERROR : WARN;
+    return _jsx("span", { style: { color, fontWeight: 600, whiteSpace: 'nowrap' }, children: decision });
 }
 function DecisionRow({ record }) {
     const detail = record.pattern !== undefined ? `pattern /${record.pattern}/` : (record.detail ?? '');
     const time = new Date(record.time);
     const timeText = Number.isNaN(time.getTime())
         ? record.time
-        : time.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const stageColor = STAGE_COLORS[record.stage] ?? undefined;
-    return (_jsxs("tr", { style: { borderTop: '1px solid var(--color-border, rgba(128,128,128,0.15))' }, children: [_jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', color: 'var(--color-text-secondary, inherit)' }, children: timeText }), _jsx("td", { style: { ...CELL, fontFamily: 'var(--font-mono, ui-monospace, monospace)' }, children: record.tool }), _jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', ...(stageColor !== undefined ? { color: stageColor } : {}) }, children: record.stage }), _jsx("td", { style: CELL, children: _jsx(VerdictBadge, { decision: record.decision }) }), _jsx("td", { style: { ...CELL, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--color-text-secondary, inherit)' }, title: detail, children: detail })] }));
+        : time.toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return (_jsxs("tr", { style: { borderTop: `1px solid ${BORDER_L1}` }, children: [_jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', color: LABEL_CAPTION, fontFamily: MONO_FONT }, children: timeText }), _jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', color: LABEL_PRIMARY, fontFamily: MONO_FONT }, children: record.tool }), _jsx("td", { style: {
+                    ...CELL, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+                }, title: record.stage, children: record.stage }), _jsx("td", { style: CELL, children: _jsx(VerdictBadge, { decision: record.decision }) }), _jsx("td", { style: {
+                    ...CELL, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
+                }, title: detail, children: detail })] }));
 }
-const CELL = {
-    padding: '5px 8px',
-    fontSize: 11,
-    textAlign: 'left',
-    verticalAlign: 'top',
-};
-/** Stat tile: a number with a colored label, used for the three cumulative counts. */
+/* ------------------------------------------------------------------ */
+/* Stat tile                                                           */
+/* ------------------------------------------------------------------ */
+/** Stat tile: raised surface (layer-3) on the layer-2 dialog card. */
 function StatTile({ label, value, color }) {
     return (_jsxs("div", { style: {
             flex: 1,
@@ -145,23 +114,32 @@ function StatTile({ label, value, color }) {
             alignItems: 'center',
             gap: 2,
             padding: '10px 8px',
-            borderRadius: 10,
-            border: '1px solid var(--color-border, rgba(128,128,128,0.25))',
-            background: 'var(--color-bg-subtle, transparent)',
-        }, children: [_jsx("span", { style: { fontSize: 20, fontWeight: 700, color, lineHeight: 1.2 }, children: value }), _jsx("span", { style: { fontSize: 10, color: 'var(--color-text-secondary, inherit)', textTransform: 'uppercase', letterSpacing: 0.4 }, children: label })] }));
+            borderRadius: 12,
+            border: `1px solid ${BORDER_L1}`,
+            background: BG_LAYER_3,
+        }, children: [_jsx("span", { style: { fontSize: 20, lineHeight: '24px', fontWeight: 600, color }, children: value }), _jsx("span", { style: { fontSize: 11, lineHeight: '16px', color: LABEL_CAPTION }, children: label })] }));
 }
-/** Dialog body content: toggle row + stat tiles + decision table. */
-function DialogContent({ status, history, toggling, onToggle, onClose, }) {
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { style: DIALOG_HEADER, children: [_jsx("span", { style: { fontSize: 14, fontWeight: 600 }, children: "Auto-approval" }), _jsx(Button, { variant: "ghost", size: "sm", onClick: onClose, children: "Close" })] }), _jsxs("div", { style: DIALOG_BODY, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }, children: [_jsxs("div", { children: [_jsx("div", { style: { fontSize: 13, fontWeight: 600 }, children: status.enabled ? 'Enabled' : 'Disabled' }), _jsx("div", { style: { fontSize: 11, color: 'var(--color-text-secondary, inherit)' }, children: status.enabled
-                                            ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
-                                            : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'primary' : 'outline', size: "sm", disabled: toggling, onClick: onToggle, children: status.enabled ? 'Turn off' : 'Turn on' })] }), _jsxs("div", { style: { display: 'flex', gap: 8, marginBottom: 14 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: "#22c55e" }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: "#ef4444" }), _jsx(StatTile, { label: "Asked", value: status.asks, color: "#f59e0b" })] }), _jsxs("div", { style: { fontSize: 12, fontWeight: 600, marginBottom: 6 }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 10, fontWeight: 400, color: 'var(--color-text-secondary, inherit)', marginLeft: 6 }, children: [history.length, " shown (newest first)"] }))] }), history.length === 0
-                        ? (_jsx("div", { style: { fontSize: 11, color: 'var(--color-text-secondary, inherit)', padding: '12px 0' }, children: "No auto-approval decisions recorded for this session yet." }))
-                        : (_jsxs("table", { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11 }, children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { style: { ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }, children: "Time" }), _jsx("th", { style: { ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }, children: "Tool" }), _jsx("th", { style: { ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }, children: "Stage" }), _jsx("th", { style: { ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }, children: "Verdict" }), _jsx("th", { style: { ...CELL, color: 'var(--color-text-secondary, inherit)', fontWeight: 600 }, children: "Detail" })] }) }), _jsx("tbody", { children: history.map((record, index) => _jsx(DecisionRow, { record: record }, index)) })] }))] })] }));
+/* ------------------------------------------------------------------ */
+/* Dialog body                                                         */
+/* ------------------------------------------------------------------ */
+function DialogContent({ status, history, toggling, error, onToggle, }) {
+    return (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, children: [_jsxs("div", { style: { minWidth: 0 }, children: [_jsx("div", { style: { fontSize: 14, lineHeight: '22px', fontWeight: 600, color: LABEL_PRIMARY }, children: status.enabled ? 'Enabled' : 'Disabled' }), _jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: status.enabled
+                                    ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
+                                    : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'outline' : 'primary', size: "sm", disabled: toggling, onClick: onToggle, children: status.enabled ? 'Turn off' : 'Turn on' })] }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls require manual approval." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR }), _jsx(StatTile, { label: "Asked", value: status.asks, color: WARN })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
+                ? (_jsx("div", { style: { padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: "No auto-approval decisions recorded for this session yet." }))
+                : (
+                // The official dialog is min(380px, 100%) wide; the table scrolls
+                // vertically inside the card rather than stretching it.
+                _jsx("div", { style: { marginTop: 6, maxHeight: '38vh', overflowY: 'auto' }, children: _jsxs("table", { style: { width: '100%', borderCollapse: 'collapse' }, children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { style: HEADER_CELL, children: "Time" }), _jsx("th", { style: HEADER_CELL, children: "Tool" }), _jsx("th", { style: HEADER_CELL, children: "Stage" }), _jsx("th", { style: HEADER_CELL, children: "Verdict" }), _jsx("th", { style: HEADER_CELL, children: "Detail" })] }) }), _jsx("tbody", { children: history.map((record, index) => _jsx(DecisionRow, { record: record }, index)) })] }) })), error !== undefined && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: ERROR }, children: error }))] }));
 }
+/* ------------------------------------------------------------------ */
+/* Chip                                                                */
+/* ------------------------------------------------------------------ */
 /**
  * The status pill. It owns its polling and is intentionally silent on failure:
- * a failed remote read renders a red "AA" with the error in the tooltip rather
- * than breaking the composer. Clicking opens the dialog (toggle + history).
+ * a failed remote read renders an error-colored "AA" with the error in the
+ * tooltip rather than breaking the composer. Clicking opens the dialog
+ * (toggle + history).
  */
 export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
     const [state, setState] = useState({ kind: 'loading' });
@@ -219,17 +197,6 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
             clearInterval(timer);
         };
     }, [dialogOpen, getHistory]);
-    // Close on Escape, mirroring the upstream Modal behavior.
-    useEffect(() => {
-        if (!dialogOpen)
-            return;
-        const onKeyDown = (e) => {
-            if (e.key === 'Escape')
-                setDialogOpen(false);
-        };
-        document.addEventListener('keydown', onKeyDown);
-        return () => document.removeEventListener('keydown', onKeyDown);
-    }, [dialogOpen]);
     const toggle = useCallback(() => {
         if (toggling)
             return;
@@ -251,40 +218,38 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
             setDialogError(reason instanceof Error ? reason.message : String(reason));
         });
     }, [state, toggling, setEnabled]);
-    let dot = '#9ca3af';
+    let dot = LABEL_CAPTION;
     let label = 'AA';
     let title = 'auto-approval';
     if (state.kind === 'loading') {
-        dot = '#9ca3af';
+        dot = LABEL_CAPTION;
         label = 'AA';
         title = 'auto-approval: loading…';
     }
     else if (state.kind === 'error') {
-        dot = '#ef4444';
+        dot = ERROR;
         label = 'AA';
         title = `auto-approval: ${state.message}`;
     }
     else if (!state.status.enabled) {
-        dot = '#9ca3af';
+        dot = LABEL_CAPTION;
         label = 'AA off';
         title = describe(state.status);
     }
     else if (state.status.paused) {
-        dot = '#f59e0b';
+        dot = WARN;
         label = 'AA paused';
         title = describe(state.status);
     }
     else {
-        dot = '#22c55e';
+        dot = SUCCESS;
         label = state.status.denials > 0 ? `AA ·${state.status.denials}` : 'AA on';
         title = describe(state.status);
     }
-    const chip = (_jsxs("span", { style: PILL, title: title, "aria-label": title, role: "button", tabIndex: 0, "aria-haspopup": "dialog", onClick: () => setDialogOpen(true), onKeyDown: (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                setDialogOpen(true);
-            }
-        }, children: [_jsx("span", { style: { ...DOT, background: dot }, "aria-hidden": true }), label] }));
-    return (_jsxs(_Fragment, { children: [_jsx(Tooltip, { label: title, side: "bottom", delayMs: 300, children: chip }), dialogOpen && state.kind === 'status' && createPortal(_jsx("div", { style: OVERLAY, onClick: () => setDialogOpen(false), children: _jsxs("div", { style: DIALOG, role: "dialog", "aria-modal": "true", "aria-label": "Auto-approval", onClick: (e) => e.stopPropagation(), children: [_jsx(DialogContent, { status: state.status, history: history, toggling: toggling, onToggle: toggle, onClose: () => setDialogOpen(false) }), dialogError !== undefined && (_jsx("div", { style: { padding: '0 16px 12px', fontSize: 11, color: '#ef4444' }, children: dialogError }))] }) }), document.body)] }));
+    return (_jsxs(_Fragment, { children: [_jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: "Auto-approval", ...state.kind === 'status' ? { description: summaryLine(state.status) } : {}, children: state.kind === 'status'
+                    ? (_jsx(DialogContent, { status: state.status, history: history, toggling: toggling, error: dialogError, onToggle: toggle }))
+                    : (_jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: state.kind === 'loading'
+                            ? 'Loading auto-approval status…'
+                            : `Status unavailable: ${state.message}` })) })] }));
 }
 //# sourceMappingURL=AutoApprovalChip.js.map
