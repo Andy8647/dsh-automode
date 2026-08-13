@@ -5,7 +5,7 @@
  * @module @deepseek-ai/dsh-auto-approval/config
  */
 
-import z from 'schemastery'
+import z from '@deepseek-ai/schemastery'
 
 /** 插件配置（全部可选，schemastery schema 提供默认值——上游惯例）。 */
 export interface Config {

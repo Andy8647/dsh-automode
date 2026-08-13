@@ -1,4 +1,6 @@
 # dsh 包的 peerDependencies 指向未发布 npm 的 @deepseek-ai/* 包；
 # 本地开发用 file: 链接上游 monorepo 构建产物，peer 不自动安装。
 autoInstallPeers: false
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/dsh-typert-protocol@0.0.1-rc.3'
 strictPeerDependencies: false

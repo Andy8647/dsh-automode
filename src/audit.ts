@@ -7,7 +7,7 @@
  * @module @deepseek-ai/dsh-auto-approval/audit
  */
 
-import type { Context } from 'cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'

@@ -16,7 +16,7 @@
  * @module @deepseek-ai/dsh-auto-approval
  */
 
-import { Context } from 'cordis'
+import { Context } from '@deepseek-ai/cordis'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JsonValue } from '@deepseek-ai/dsh-session'

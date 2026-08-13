@@ -4,7 +4,7 @@
  * 任何非法配置在插件加载时直接 throw，绝不在运行时静默降级（M1）。
  * @module @deepseek-ai/dsh-auto-approval/config
  */
-import z from 'schemastery';
+import z from '@deepseek-ai/schemastery';
 /** 插件配置（全部可选，schemastery schema 提供默认值——上游惯例）。 */
 export interface Config {
     /** 总开关：false 时完全旁路（瀑布 fallback 为 allow）。 */

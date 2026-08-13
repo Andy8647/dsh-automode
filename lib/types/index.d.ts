@@ -15,11 +15,11 @@
  *
  * @module @deepseek-ai/dsh-auto-approval
  */
-import { Context } from 'cordis';
+import { Context } from '@deepseek-ai/cordis';
 import { Config } from './config.ts';
 export declare const name = "auto-approval";
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
-export declare const NS: Branded<"SettingsNamespace">;
+export declare const NS: import("@deepseek-ai/dsh-settings").SettingsNamespace;
 export { Config } from './config.ts';
 /**
  * 插件入口：挂载 `tools/pre-execute` 瀑布（prepend 最先跑）+ L0 deny 的

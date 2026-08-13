@@ -6,7 +6,7 @@
  * warn，绝不影响审批决策本身。
  * @module @deepseek-ai/dsh-auto-approval/audit
  */
-import type { Context } from 'cordis';
+import type { Context } from '@deepseek-ai/cordis';
 import type { ModelRoute } from './config.ts';
 import type { AgentLike } from './tracker.ts';
 /** 判定来源阶段。 */

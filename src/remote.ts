@@ -13,7 +13,7 @@
  * @module @deepseek-ai/dsh-auto-approval/remote
  */
 
-import type { Context } from 'cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 
