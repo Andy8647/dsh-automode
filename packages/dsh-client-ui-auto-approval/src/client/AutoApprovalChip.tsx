@@ -72,23 +72,23 @@ function countLine(status: AutoApprovalStatus): string {
   return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`
 }
 
-/** Armed-config summary (no counts; the dialog shows those as tiles). */
-function summaryLine(status: AutoApprovalStatus): string {
-  const parts = [
-    `L0: ${status.denyPatterns} deny (+${status.askPatterns} legacy ask) patterns`,
-    `${status.autoApproveTools} auto-approve tools`,
-    status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
-  ]
-  return parts.join(' · ')
+/** From "provider/model" take the model segment (keeps the tooltip short). */
+function shortModel(classifier: string): string {
+  const slash = classifier.lastIndexOf('/')
+  return slash >= 0 ? classifier.slice(slash + 1) : classifier
 }
 
-/** One human-readable tooltip line: config summary + cumulative stats. */
+/** One-line tooltip: concise armed state + cumulative counts (full config lives in the dialog). */
 function describe(status: AutoApprovalStatus): string {
-  if (!status.enabled) return `auto-approval disabled — ${countLine(status)}`
-  const parts = [summaryLine(status), countLine(status)]
-  if (status.paused) parts.push('paused (deny limit reached)')
-  if (status.denials > 0) parts.push(`${status.denials} denial(s) this turn`)
-  return `auto-approval armed — ${parts.join(' · ')}`
+  const counts = countLine(status)
+  if (!status.enabled) return `auto-approval off — ${counts}`
+  const parts = [
+    `L0 ${status.denyPatterns + status.askPatterns} rules`,
+    status.classifier === 'disabled' ? 'L1 off' : `L1 ${shortModel(status.classifier)}`,
+    counts,
+  ]
+  if (status.paused) parts.push('paused')
+  return `auto-approval on — ${parts.join(' · ')}`
 }
 
 /* ------------------------------------------------------------------ */
@@ -173,6 +173,29 @@ function StatTile({ label, value, color }: { label: string; value: number; color
 }
 
 /* ------------------------------------------------------------------ */
+/* Config summary (dialog)                                             */
+/* ------------------------------------------------------------------ */
+
+/** Formatted armed-config rows: label + value on their own line. */
+function ConfigSummary({ status }: { status: AutoApprovalStatus }): ReactNode {
+  const rows: Array<[string, string]> = [
+    ['L0 rules', `${status.denyPatterns + status.askPatterns} (${status.denyPatterns} deny + ${status.askPatterns} legacy ask)`],
+    ['L1 route', status.classifier === 'disabled' ? 'off' : status.classifier],
+    ['Auto-approve', `${status.autoApproveTools} tools`],
+  ]
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 12 }}>
+      {rows.map(([label, value]) => (
+        <div key={label} style={{ display: 'flex', gap: 10, fontSize: 12, lineHeight: '18px' }}>
+          <span style={{ width: 92, flexShrink: 0, color: LABEL_CAPTION }}>{label}</span>
+          <span style={{ color: LABEL_SECONDARY }}>{value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* Dialog body                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -209,6 +232,9 @@ function DialogContent({
           {status.enabled ? 'Turn off' : 'Turn on'}
         </Button>
       </div>
+
+      {/* Config summary */}
+      <ConfigSummary status={status} />
 
       {/* Paused notice */}
       {status.paused && (
@@ -402,7 +428,6 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
         onClose={() => setDialogOpen(false)}
         title="Auto-approval"
         className="aa-modal-wide"
-        {...state.kind === 'status' ? { description: summaryLine(state.status) } : {}}
       >
         {state.kind === 'status'
           ? (

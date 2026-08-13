@@ -52,25 +52,24 @@ const DIALOG_WIDTH_CSS = '.aa-modal-wide { width: min(660px, 100%) !important; }
 function countLine(status) {
     return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`;
 }
-/** Armed-config summary (no counts; the dialog shows those as tiles). */
-function summaryLine(status) {
-    const parts = [
-        `L0: ${status.denyPatterns} deny (+${status.askPatterns} legacy ask) patterns`,
-        `${status.autoApproveTools} auto-approve tools`,
-        status.classifier === 'disabled' ? 'L1 off' : `L1 ${status.classifier}`,
-    ];
-    return parts.join(' · ');
+/** From "provider/model" take the model segment (keeps the tooltip short). */
+function shortModel(classifier) {
+    const slash = classifier.lastIndexOf('/');
+    return slash >= 0 ? classifier.slice(slash + 1) : classifier;
 }
-/** One human-readable tooltip line: config summary + cumulative stats. */
+/** One-line tooltip: concise armed state + cumulative counts (full config lives in the dialog). */
 function describe(status) {
+    const counts = countLine(status);
     if (!status.enabled)
-        return `auto-approval disabled — ${countLine(status)}`;
-    const parts = [summaryLine(status), countLine(status)];
+        return `auto-approval off — ${counts}`;
+    const parts = [
+        `L0 ${status.denyPatterns + status.askPatterns} rules`,
+        status.classifier === 'disabled' ? 'L1 off' : `L1 ${shortModel(status.classifier)}`,
+        counts,
+    ];
     if (status.paused)
-        parts.push('paused (deny limit reached)');
-    if (status.denials > 0)
-        parts.push(`${status.denials} denial(s) this turn`);
-    return `auto-approval armed — ${parts.join(' · ')}`;
+        parts.push('paused');
+    return `auto-approval on — ${parts.join(' · ')}`;
 }
 /* ------------------------------------------------------------------ */
 /* Decision table pieces                                               */
@@ -128,12 +127,24 @@ function StatTile({ label, value, color }) {
         }, children: [_jsx("span", { style: { fontSize: 20, lineHeight: '24px', fontWeight: 600, color }, children: value }), _jsx("span", { style: { fontSize: 11, lineHeight: '16px', color: LABEL_CAPTION }, children: label })] }));
 }
 /* ------------------------------------------------------------------ */
+/* Config summary (dialog)                                             */
+/* ------------------------------------------------------------------ */
+/** Formatted armed-config rows: label + value on their own line. */
+function ConfigSummary({ status }) {
+    const rows = [
+        ['L0 rules', `${status.denyPatterns + status.askPatterns} (${status.denyPatterns} deny + ${status.askPatterns} legacy ask)`],
+        ['L1 route', status.classifier === 'disabled' ? 'off' : status.classifier],
+        ['Auto-approve', `${status.autoApproveTools} tools`],
+    ];
+    return (_jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: 3, marginTop: 12 }, children: rows.map(([label, value]) => (_jsxs("div", { style: { display: 'flex', gap: 10, fontSize: 12, lineHeight: '18px' }, children: [_jsx("span", { style: { width: 92, flexShrink: 0, color: LABEL_CAPTION }, children: label }), _jsx("span", { style: { color: LABEL_SECONDARY }, children: value })] }, label))) }));
+}
+/* ------------------------------------------------------------------ */
 /* Dialog body                                                         */
 /* ------------------------------------------------------------------ */
 function DialogContent({ status, history, toggling, error, onToggle, }) {
     return (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, children: [_jsxs("div", { style: { minWidth: 0 }, children: [_jsx("div", { style: { fontSize: 14, lineHeight: '22px', fontWeight: 600, color: LABEL_PRIMARY }, children: status.enabled ? 'Enabled' : 'Disabled' }), _jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: status.enabled
                                     ? 'Matching calls are auto-approved (L0 rules still hard-deny).'
-                                    : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'outline' : 'primary', size: "sm", disabled: toggling, onClick: onToggle, style: { flexShrink: 0, whiteSpace: 'nowrap' }, children: status.enabled ? 'Turn off' : 'Turn on' })] }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls are denied until the next turn." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
+                                    : 'All calls fall through to the normal approval flow.' })] }), _jsx(Button, { variant: status.enabled ? 'outline' : 'primary', size: "sm", disabled: toggling, onClick: onToggle, style: { flexShrink: 0, whiteSpace: 'nowrap' }, children: status.enabled ? 'Turn off' : 'Turn on' })] }), _jsx(ConfigSummary, { status: status }), status.paused && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: WARN }, children: "Paused: deny limit reached this turn \u2014 calls are denied until the next turn." })), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
                 ? (_jsx("div", { style: { padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: "No auto-approval decisions recorded for this session yet." }))
                 : (
                 // The official dialog is min(380px, 100%) wide; the table scrolls
@@ -254,7 +265,7 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
         label = state.status.denials > 0 ? `AA ·${state.status.denials}` : 'AA on';
         title = describe(state.status);
     }
-    return (_jsxs(_Fragment, { children: [_jsx("style", { children: DIALOG_WIDTH_CSS }), _jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: "Auto-approval", className: "aa-modal-wide", ...state.kind === 'status' ? { description: summaryLine(state.status) } : {}, children: state.kind === 'status'
+    return (_jsxs(_Fragment, { children: [_jsx("style", { children: DIALOG_WIDTH_CSS }), _jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: "Auto-approval", className: "aa-modal-wide", children: state.kind === 'status'
                     ? (_jsx(DialogContent, { status: state.status, history: history, toggling: toggling, error: dialogError, onToggle: toggle }))
                     : (_jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: state.kind === 'loading'
                             ? 'Loading auto-approval status…'

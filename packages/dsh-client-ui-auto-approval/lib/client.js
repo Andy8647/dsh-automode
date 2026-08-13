@@ -53,21 +53,22 @@ window.__ModuleLoader__.load({
 		function countLine(status) {
 			return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`;
 		}
-		/** Armed-config summary (no counts; the dialog shows those as tiles). */
-		function summaryLine(status) {
-			return [
-				`L0: ${status.denyPatterns} deny (+${status.askPatterns} legacy ask) patterns`,
-				`${status.autoApproveTools} auto-approve tools`,
-				status.classifier === "disabled" ? "L1 off" : `L1 ${status.classifier}`
-			].join(" · ");
+		/** From "provider/model" take the model segment (keeps the tooltip short). */
+		function shortModel(classifier) {
+			const slash = classifier.lastIndexOf("/");
+			return slash >= 0 ? classifier.slice(slash + 1) : classifier;
 		}
-		/** One human-readable tooltip line: config summary + cumulative stats. */
+		/** One-line tooltip: concise armed state + cumulative counts (full config lives in the dialog). */
 		function describe(status) {
-			if (!status.enabled) return `auto-approval disabled — ${countLine(status)}`;
-			const parts = [summaryLine(status), countLine(status)];
-			if (status.paused) parts.push("paused (deny limit reached)");
-			if (status.denials > 0) parts.push(`${status.denials} denial(s) this turn`);
-			return `auto-approval armed — ${parts.join(" · ")}`;
+			const counts = countLine(status);
+			if (!status.enabled) return `auto-approval off — ${counts}`;
+			const parts = [
+				`L0 ${status.denyPatterns + status.askPatterns} rules`,
+				status.classifier === "disabled" ? "L1 off" : `L1 ${shortModel(status.classifier)}`,
+				counts
+			];
+			if (status.paused) parts.push("paused");
+			return `auto-approval on — ${parts.join(" · ")}`;
 		}
 		const CELL = {
 			padding: "8px 10px",
@@ -189,6 +190,41 @@ window.__ModuleLoader__.load({
 				})]
 			});
 		}
+		/** Formatted armed-config rows: label + value on their own line. */
+		function ConfigSummary({ status }) {
+			const rows = [
+				["L0 rules", `${status.denyPatterns + status.askPatterns} (${status.denyPatterns} deny + ${status.askPatterns} legacy ask)`],
+				["L1 route", status.classifier === "disabled" ? "off" : status.classifier],
+				["Auto-approve", `${status.autoApproveTools} tools`]
+			];
+			return (0, react_jsx_runtime.jsx)("div", {
+				style: {
+					display: "flex",
+					flexDirection: "column",
+					gap: 3,
+					marginTop: 12
+				},
+				children: rows.map(([label, value]) => (0, react_jsx_runtime.jsxs)("div", {
+					style: {
+						display: "flex",
+						gap: 10,
+						fontSize: 12,
+						lineHeight: "18px"
+					},
+					children: [(0, react_jsx_runtime.jsx)("span", {
+						style: {
+							width: 92,
+							flexShrink: 0,
+							color: LABEL_CAPTION
+						},
+						children: label
+					}), (0, react_jsx_runtime.jsx)("span", {
+						style: { color: LABEL_SECONDARY },
+						children: value
+					})]
+				}, label))
+			});
+		}
 		function DialogContent({ status, history, toggling, error, onToggle }) {
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
 				(0, react_jsx_runtime.jsxs)("div", {
@@ -228,6 +264,7 @@ window.__ModuleLoader__.load({
 						children: status.enabled ? "Turn off" : "Turn on"
 					})]
 				}),
+				(0, react_jsx_runtime.jsx)(ConfigSummary, { status }),
 				status.paused && (0, react_jsx_runtime.jsx)("div", {
 					style: {
 						marginTop: 10,
@@ -463,7 +500,6 @@ window.__ModuleLoader__.load({
 					onClose: () => setDialogOpen(false),
 					title: "Auto-approval",
 					className: "aa-modal-wide",
-					...state.kind === "status" ? { description: summaryLine(state.status) } : {},
 					children: state.kind === "status" ? (0, react_jsx_runtime.jsx)(DialogContent, {
 						status: state.status,
 						history,
