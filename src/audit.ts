@@ -1,10 +1,10 @@
 /**
- * 审计：每次判定落一条 `automode/decision` session 事件（可回放），
+ * 审计：每次判定落一条 `auto-approval/decision` session 事件（可回放），
  * 命中的 pattern 原文只出现在这里和日志里，不进返回给模型的 reason（M2）。
  *
  * 审计是 best-effort：append 失败（如无 session、数据不可序列化）只记
  * warn，绝不影响审批决策本身。
- * @module dsh-automode/audit
+ * @module dsh-auto-approval/audit
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -33,7 +33,7 @@ export type DecisionStage =
   /** 未配置分类器路由：白名单之外 fail-closed deny。 */
   | 'L1-unconfigured'
 
-/** `automode/decision` 事件载荷（必须 lossless JSON）。
+/** `auto-approval/decision` 事件载荷（必须 lossless JSON）。
  * 全托管收敛为 allow/deny 两态：不确定的调用（原 askPatterns 命中、L1 ASK、
  * fail-closed）统一 deny。 */
 export interface AutomodeDecisionEvent {
@@ -58,12 +58,12 @@ export interface AutomodeDecisionEvent {
 declare module '@deepseek-ai/dsh-session' {
   interface SessionEventMap {
     /** automode 插件的每次 tool-call 判定记录（log-only，不进模型历史）。 */
-    'automode/decision': AutomodeDecisionEvent
+    'auto-approval/decision': AutomodeDecisionEvent
   }
 }
 
 /**
- * 独立决策日志：`$DSH_HOME/logs/automode.log`（默认 `~/.dsh/logs/...`）。
+ * 独立决策日志：`$DSH_HOME/logs/auto-approval.log`（默认 `~/.dsh/logs/...`）。
  * UI 没有任何通道渲染插件的决策（host 白名单 + toolviews 硬编码，见 issue 调研），
  * 文件日志是用户侧唯一不依赖 UI 的观测手段。每行一条 JSON，人读友好。
  *
@@ -71,7 +71,7 @@ declare module '@deepseek-ai/dsh-session' {
  * 与 session 审计一样 best-effort，绝不阻塞审批决策。
  */
 const DSH_HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
-export const DECISION_LOG_PATH = join(DSH_HOME, 'logs', 'automode.log')
+export const DECISION_LOG_PATH = join(DSH_HOME, 'logs', 'auto-approval.log')
 
 /** 首次写入前的 mkdir 一次性准备。 */
 let logReady: Promise<void> | undefined
@@ -83,7 +83,7 @@ function ensureLogReady(): Promise<void> {
 /** 串行写队列：前一条落盘后才写下一条，保证同进程内顺序。 */
 let writeChain: Promise<void> = Promise.resolve()
 function enqueueLogLine(ctx: Context, line: object): void {
-  const logger = ctx.logger('automode')
+  const logger = ctx.logger('auto-approval')
   writeChain = writeChain
     .then(async () => {
       await ensureLogReady()
@@ -101,7 +101,7 @@ export function auditArmed(ctx: Context, summary: {
   readonly autoApproveTools: number
   readonly classifier: string
 }): void {
-  enqueueLogLine(ctx, { type: 'automode/armed', time: new Date().toISOString(), ...summary })
+  enqueueLogLine(ctx, { type: 'auto-approval/armed', time: new Date().toISOString(), ...summary })
 }
 
 /**
@@ -112,13 +112,13 @@ export function auditArmed(ctx: Context, summary: {
  * （`KNOWN_SESSION_EVENT_TYPES` 白名单，`Session.append()` 无 ignorable
  * 通道），写自定义事件会使该 session 重启后无法打开——session 事件写入
  * 由 `auditSessionEvents` 开关控制（默认 false）；文件日志
- * `~/.dsh/logs/automode.log` 始终记录，不受影响。
+ * `~/.dsh/logs/auto-approval.log` 始终记录，不受影响。
  */
 export function audit(ctx: Context, agent: AgentLike | undefined, event: AutomodeDecisionEvent, sessionEvents: boolean): void {
-  enqueueLogLine(ctx, { type: 'automode/decision', time: new Date().toISOString(), ...event })
+  enqueueLogLine(ctx, { type: 'auto-approval/decision', time: new Date().toISOString(), ...event })
   if (agent === undefined || !sessionEvents) {
     if (agent === undefined) {
-      ctx.logger('automode').debug(`decision (agent-less, no session): ${JSON.stringify(event)}`)
+      ctx.logger('auto-approval').debug(`decision (agent-less, no session): ${JSON.stringify(event)}`)
     }
     return
   }
@@ -126,8 +126,8 @@ export function audit(ctx: Context, agent: AgentLike | undefined, event: Automod
     // 结构化收窄：Session.append 的泛型签名无法直接赋入最小接口，这里只
     // 断言行存在（真实 Session 必有 append；mock 也会提供）。
     const session = agent.session as unknown as { append(type: string, data: AutomodeDecisionEvent): unknown }
-    session.append('automode/decision', event)
+    session.append('auto-approval/decision', event)
   } catch (error: unknown) {
-    ctx.logger('automode').warn(`audit append failed: ${error instanceof Error ? error.message : String(error)}`)
+    ctx.logger('auto-approval').warn(`audit append failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 }

@@ -8,8 +8,8 @@
  * static "dynamic code execution" scanners on published plugin sources.
  *
  * The shapes MUST stay in lockstep with the host service
- * (`packages/dsh-automode/src/remote.ts`) and its strict manifest
- * (`packages/dsh-automode/src/remote-manifest.ts`).
+ * (`packages/dsh-auto-approval/src/remote.ts`) and its strict manifest
+ * (`packages/dsh-auto-approval/src/remote-manifest.ts`).
  */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 

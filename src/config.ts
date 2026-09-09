@@ -2,7 +2,7 @@
  * 配置 schema 与 fail-loud 解析：schemastery 负责默认值，{@link resolveConfig}
  * 负责 schema 表达不了的校验（正则预编译、provider/model 成对、数值边界）。
  * 任何非法配置在插件加载时直接 throw，绝不在运行时静默降级（M1）。
- * @module dsh-automode/config
+ * @module dsh-auto-approval/config
  */
 
 import z from '@deepseek-ai/schemastery'
@@ -14,11 +14,11 @@ export interface Config {
   /** 自毁护栏：拦截 killall/pkill/taskkill/Stop-Process 整类终止命令及 kill 宿主 PID。默认开。 */
   selfKillGuard?: boolean
   /**
-   * 把每次决策写进 session 事件（`automode/decision`）。默认关：
+   * 把每次决策写进 session 事件（`auto-approval/decision`）。默认关：
    * 08-12 final 起 session 读取对未声明事件类型 fail-closed（
    * `KNOWN_SESSION_EVENT_TYPES` 白名单，append() 无 ignorable 通道），
    * 写 session 事件会使该 session 重启后无法打开。文件审计日志
-   * `~/.dsh/logs/automode.log` 不受影响，始终记录。
+   * `~/.dsh/logs/auto-approval.log` 不受影响，始终记录。
    */
   auditSessionEvents?: boolean
   /** 命中即 ask 的正则列表（已删：全托管无人工，不确定的调用直接 deny）。

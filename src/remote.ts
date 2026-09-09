@@ -12,7 +12,7 @@
  * `@Remote` 方法里的 `Agent` 参数走 typert lookup：client 侧传 sessionId，
  * gateway 自动解析成 Agent 对象（与 `commands.list(agent)` 同机制）。
  * 只读服务：开关是权限 preset，不再有 setEnabled 写路径。
- * @module dsh-automode/remote
+ * @module dsh-auto-approval/remote
  */
 
 import type { Context } from '@deepseek-ai/cordis'

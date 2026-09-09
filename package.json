@@ -1,7 +1,7 @@
 {
-  "name": "@andy8647/dsh-automode",
+  "name": "dsh-auto-approval",
   "description": "Automode for DeepSeek Harness: a fourth permission preset that runs on full access with an LLM classifier as the only gate before every tool call",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Andy8647/dsh-automode.git"
+    "url": "git+https://github.com/Andy8647/dsh-auto-approval.git"
   },
   "dsh": {
     "bundle": {

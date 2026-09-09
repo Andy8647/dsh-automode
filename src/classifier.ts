@@ -10,7 +10,7 @@
  *   一律返回 fail-closed（调用方转 deny），绝不默认放行。
  *
  * 本模块不碰 cordis：`llm` 以最小结构类型注入，测试可直接 stub。
- * @module dsh-automode/classifier
+ * @module dsh-auto-approval/classifier
  */
 
 import { BlockAssembler, createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
@@ -126,7 +126,7 @@ async function callModel(
 ): Promise<string> {
   const messages: Message[] = [createUserMessage({
     content: [{ type: 'text', text: userText }],
-    source: { kind: 'plugin', plugin: 'dsh-automode' },
+    source: { kind: 'plugin', plugin: 'dsh-auto-approval' },
   })]
   const callDeadline = deadline(upstream, timeoutMs, 'AUTO_APPROVAL_CLASSIFIER_TIMEOUT')
   try {

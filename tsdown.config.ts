@@ -5,14 +5,14 @@ import { defineConfig } from 'tsdown'
  *
  * - `lib/index.js` — the host half (ESM, Node). Dependencies and peers stay
  *   external, so `@deepseek-ai/*` resolves to the running harness.
- * - `lib/client.js` — the browser half served at `/plugins/dsh-automode/client.js`
+ * - `lib/client.js` — the browser half served at `/plugins/dsh-auto-approval/client.js`
  *   by `client-modules`. It is a closure factory
  *   (`window.__ModuleLoader__.load({ id, factory })`) resolving externals
  *   through the injected `require` (the loader's frozen module table);
  *   everything else is inlined.
  */
 
-const ID = '@andy8647/dsh-automode'
+const ID = 'dsh-auto-approval'
 
 /** Module specifiers the shell shares into the frozen browser module table. */
 const PLATFORM_MODULES = [

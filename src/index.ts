@@ -1,5 +1,5 @@
 /**
- * DSH 权限自动审批插件 — `dsh-automode`
+ * DSH 权限自动审批插件 — `dsh-auto-approval`
  *
  * 在 `tools/pre-execute` 瀑布最前挂一个两态 classifier，给 dsh 的 approval
  * policy 增加第三档 `auto`（现有：`ask` / `never`）：
@@ -16,7 +16,7 @@
  * - 本 turn deny 计数（tracker）从 session log 的 turn/start 惰性推导
  * - L1 一切失败 fail-closed 转 deny，绝不默认放行
  *
- * @module dsh-automode
+ * @module dsh-auto-approval
  */
 
 import { Context } from '@deepseek-ai/cordis'
@@ -38,10 +38,10 @@ import { remoteManifest } from './remote-manifest.ts'
 import { DenialTracker } from './tracker.ts'
 import { DecisionHistory } from './history.ts'
 
-export const name = 'automode'
+export const name = 'auto-approval'
 
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
-export const NS = 'automode'
+export const NS = 'auto-approval'
 
 export { Config } from './config.ts'
 
@@ -88,7 +88,7 @@ function callFacts(exec: ToolExecution): { agent: Agent | undefined; callId: str
  * （本 bundle 的 patch 往官方 preset 表里加的第四档）时才生效；选其它
  * preset 即完全旁路。这样用户可见的模型是 3 + 1：三档沙箱 + 一档“全托管”。
  *
- * 配置走 `ctx.settings.installSection`（settings 命名空间 `automode`，
+ * 配置走 `ctx.settings.installSection`（settings 命名空间 `auto-approval`，
  * 只含分类器配置）：composition entry 是 base 层，`$DSH_HOME/settings.yaml`
  * 的 `automode:` section 是 user 层，改动热生效。`validate` 钩子让带非法
  * 正则 / 不成对路由的写在提交前被拒（fail-loud）。settings 服务缺席的
@@ -99,7 +99,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   let resolved: ResolvedConfig = resolveConfig(config)
   let tracker = new DenialTracker()
   const history = new DecisionHistory()
-  const logger = ctx.logger('automode')
+  const logger = ctx.logger('auto-approval')
 
   /** settings provider 引用（仅用于 arm 日志判断是否已挂 settings）。 */
 
@@ -162,7 +162,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       )
     }
     logger.info(
-      `automode armed: ${resolved.deny.length} deny patterns (+${resolved.ask.length} legacy ask patterns, now deny), ` +
+      `auto-approval armed: ${resolved.deny.length} deny patterns (+${resolved.ask.length} legacy ask patterns, now deny), ` +
       `${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, ` +
       (resolved.classifier === undefined
         ? ', L1 disabled (fail-closed outside the allowlists)'

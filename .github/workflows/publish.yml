@@ -1,10 +1,10 @@
 name: publish
 
-# Publish dsh-automode to npm via trusted publishing (OIDC) — no long-lived token.
+# Publish dsh-auto-approval to npm via trusted publishing (OIDC) — no long-lived token.
 #
 # Preconditions (one-time, done locally after the first interactive publish):
-#   npm trust github @andy8647/dsh-automode --file publish.yml \
-#     --repo Andy8647/dsh-automode --allow-publish
+#   npm trust github dsh-auto-approval --file publish.yml \
+#     --repo Andy8647/dsh-auto-approval --allow-publish
 # Requires npm >= 11.15 for the `npm trust` command itself; the publish job only
 # needs npm >= 11.5.1 (OIDC support) and Node >= 22.14.
 #

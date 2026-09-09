@@ -19,7 +19,7 @@
  *
  * The wire schema MUST stay in lockstep with:
  * - `AutomodeStatusService` methods (this package's `remote.ts`), and
- * - the client companion's `dsh-automode/src/client/remote.ts`.
+ * - the client companion's `dsh-auto-approval/src/client/remote.ts`.
  */
 import { z } from 'zod'
 import type { InvocationDescriptor } from '@deepseek-ai/dsh-typert-protocol'
@@ -64,7 +64,7 @@ const agentParameter = {
 /** The three Remote invocations, hand-written to match the generated descriptor shape. */
 const descriptors: InvocationDescriptor[] = [
   {
-    id: '@andy8647/dsh-automode#automodeStatus/getStatus',
+    id: 'dsh-auto-approval#automodeStatus/getStatus',
     service: 'automodeStatus',
     namespace: 'automodeStatus',
     method: 'getStatus',
@@ -73,12 +73,12 @@ const descriptors: InvocationDescriptor[] = [
     parameters: [agentParameter],
     result: {
       mode: 'strict',
-      typeSymbol: '@andy8647/dsh-automode#AutomodeStatus',
+      typeSymbol: 'dsh-auto-approval#AutomodeStatus',
       schema: statusSchema,
     },
   },
   {
-    id: '@andy8647/dsh-automode#automodeStatus/getHistory',
+    id: 'dsh-auto-approval#automodeStatus/getHistory',
     service: 'automodeStatus',
     namespace: 'automodeStatus',
     method: 'getHistory',
@@ -87,7 +87,7 @@ const descriptors: InvocationDescriptor[] = [
     parameters: [agentParameter],
     result: {
       mode: 'strict',
-      typeSymbol: '@andy8647/dsh-automode#DecisionRecord[]',
+      typeSymbol: 'dsh-auto-approval#DecisionRecord[]',
       schema: z.array(decisionRecordSchema).readonly(),
     },
   },
@@ -100,7 +100,7 @@ const descriptors: InvocationDescriptor[] = [
  * tooling, and this plugin exposes no public schemas or model surface.
  */
 export const remoteManifest = {
-  package: '@andy8647/dsh-automode',
+  package: 'dsh-auto-approval',
   face: 'host',
   schemas: [],
   model: { services: [], events: [], objects: [] },

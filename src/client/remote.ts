@@ -1,6 +1,6 @@
 /**
  * Hand-written Typert Remote contribution for the host
- * `dsh-automode` service.
+ * `dsh-auto-approval` service.
  *
  * The upstream build generates this artifact from the Host FaceModel
  * (`@deepseek-ai/dsh-typert-generator` → `typert.remote-client.js`); this
@@ -8,7 +8,7 @@
  * surface and the generator is a whole-workspace TypeScript analyzer.
  *
  * Two halves must stay in lockstep with the host service
- * (`dsh-automode/src/remote.ts`):
+ * (`dsh-auto-approval/src/remote.ts`):
  * - the wire schemas (hand-rolled strict parsers in `./schema.ts`) must parse
  *   exactly what `AutomodeStatusService` returns;
  * - the `TypertRemoteMap`/`TypertRemoteScopeMap` declaration merges type
@@ -49,10 +49,10 @@ const agentParameter = {
  * `ctx.remote.$mount(TYPERT_REMOTE)`.
  */
 export const TYPERT_REMOTE: TypertRemoteContribution = {
-  package: '@andy8647/dsh-automode',
+  package: 'dsh-auto-approval',
   descriptors: [
     {
-      id: '@andy8647/dsh-automode#automodeStatus/getStatus',
+      id: 'dsh-auto-approval#automodeStatus/getStatus',
       service: 'automodeStatus',
       namespace: 'automodeStatus',
       method: 'getStatus',
@@ -61,12 +61,12 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       parameters: [agentParameter],
       result: {
         mode: 'strict',
-        typeSymbol: '@andy8647/dsh-automode#AutomodeStatus',
+        typeSymbol: 'dsh-auto-approval#AutomodeStatus',
         schema: statusSchema,
       },
     },
     {
-      id: '@andy8647/dsh-automode#automodeStatus/getHistory',
+      id: 'dsh-auto-approval#automodeStatus/getHistory',
       service: 'automodeStatus',
       namespace: 'automodeStatus',
       method: 'getHistory',
@@ -75,7 +75,7 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       parameters: [agentParameter],
       result: {
         mode: 'strict',
-        typeSymbol: '@andy8647/dsh-automode#DecisionRecord[]',
+        typeSymbol: 'dsh-auto-approval#DecisionRecord[]',
         schema: decisionListSchema,
       },
     },

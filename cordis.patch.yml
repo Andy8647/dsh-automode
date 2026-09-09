@@ -1,4 +1,4 @@
-# The dsh-automode bundle patch.
+# The dsh-auto-approval bundle patch.
 #
 # Two rows, no disabling of anything official:
 #   1. `insert` mounts this package as one composition row (the host half; the
@@ -12,8 +12,8 @@
 #      the last `permission/preset` name, so the two shared-bundle entries stay
 #      distinguishable in the UI.
 - insert:
-    - id: automode
-      name: '@andy8647/dsh-automode'
+    - id: auto-approval
+      name: 'dsh-auto-approval'
 
 - id: permission
   config:

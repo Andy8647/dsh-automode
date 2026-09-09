@@ -43,7 +43,7 @@ const AUTOMODE_PRESET = 'automode'
 const POLL_MS = 2000
 
 /** One-time acknowledgment flag: Automode shares full access with no approval prompts. */
-const ACK_KEY = 'dsh-automode:acknowledged'
+const ACK_KEY = 'dsh-auto-approval:acknowledged'
 
 type ChipState =
   | { readonly kind: 'loading' }
