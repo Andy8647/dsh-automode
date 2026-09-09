@@ -20,6 +20,9 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "BSD-3-Clause",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Andy8647/dsh-auto-approval.git"
@@ -29,6 +32,7 @@
       "patch": "./cordis.patch.yml"
     },
     "compatibility": {
+      "dsh": "^0.1.2-rc.1",
       "dshReleases": {
         "0.1.2-rc.1": "compatible"
       }

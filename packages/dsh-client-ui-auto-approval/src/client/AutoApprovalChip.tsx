@@ -21,14 +21,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Modal, Pill, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the ui-conversation SlotMap merge (the input.left seat + SessionStandardProps).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { AutoApprovalChipInjected } from './index.ts'
 import type { AutoApprovalStatus, DecisionRecord } from './remote.ts'
 
-/** Full chip component props: the runtime standard kit + owner share + injected face. */
-export type AutoApprovalChipProps = PropsRuntime<'conversation.input.left'> & InjectFace<AutoApprovalChipInjected>
+/** Full chip component props: the runtime standard kit + owner share + injected face + the locale `t` seat. */
+export type AutoApprovalChipProps = PropsRuntime<'conversation.input.left'> & InjectFace<AutoApprovalChipInjected> & PropsLocale<'auto-approval'>
+
+/** Translate function of this chip's locale namespace. */
+type T = TranslateNS<'auto-approval'>
 
 /** Poll cadence while the chip stays mounted (no event forwarding for third-party remotes). */
 const POLL_MS = 2000
@@ -71,8 +74,8 @@ const DIALOG_WIDTH_CSS = `
 /* ------------------------------------------------------------------ */
 
 /** Cumulative counts as a compact "✓ n · ✗ n" line for the tooltip. */
-function countLine(status: AutoApprovalStatus): string {
-  return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`
+function countLine(status: AutoApprovalStatus, t: T): string {
+  return t('chip.counts', { approved: status.approvals, denied: status.totalDenials })
 }
 
 /** From "provider/model" take the model segment (keeps the tooltip short). */
@@ -82,8 +85,8 @@ function shortModel(classifier: string): string {
 }
 
 /** One-line tooltip: cumulative counts only (full config lives in the dialog). */
-function describe(status: AutoApprovalStatus): string {
-  return countLine(status)
+function describe(status: AutoApprovalStatus, t: T): string {
+  return countLine(status, t)
 }
 
 /* ------------------------------------------------------------------ */
@@ -111,12 +114,16 @@ const HEADER_CELL: React.CSSProperties = {
 }
 
 /** Verdict label: colored by the official state-token pair (allow/deny only). */
-function VerdictBadge({ decision }: { decision: DecisionRecord['decision'] }): ReactNode {
+function VerdictBadge({ decision, t }: { decision: DecisionRecord['decision']; t: T }): ReactNode {
   const color = decision === 'allow' ? SUCCESS : ERROR
-  return <span style={{ color, fontWeight: 600, whiteSpace: 'nowrap' }}>{decision}</span>
+  return (
+    <span style={{ color, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      {t(decision === 'allow' ? 'verdict.allow' : 'verdict.deny')}
+    </span>
+  )
 }
 
-function DecisionRow({ record }: { readonly record: DecisionRecord }): ReactNode {
+function DecisionRow({ record, t }: { readonly record: DecisionRecord; readonly t: T }): ReactNode {
   const detail = record.pattern !== undefined ? `pattern /${record.pattern}/` : (record.detail ?? '')
   const time = new Date(record.time)
   const timeText = Number.isNaN(time.getTime())
@@ -131,7 +138,7 @@ function DecisionRow({ record }: { readonly record: DecisionRecord }): ReactNode
       }} title={record.stage}>
         {record.stage}
       </td>
-      <td style={CELL}><VerdictBadge decision={record.decision} /></td>
+      <td style={CELL}><VerdictBadge decision={record.decision} t={t} /></td>
       <td style={{
         ...CELL, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
       }} title={detail}>
@@ -172,11 +179,11 @@ function StatTile({ label, value, color }: { label: string; value: number; color
 /* ------------------------------------------------------------------ */
 
 /** Formatted armed-config rows: plain-language labels, no internal jargon. */
-function ConfigSummary({ status }: { status: AutoApprovalStatus }): ReactNode {
+function ConfigSummary({ status, t }: { status: AutoApprovalStatus; t: T }): ReactNode {
   const rows: Array<[string, string]> = [
-    ['Safety rules', `${status.denyPatterns + status.askPatterns}`],
-    ['Review model', status.classifier === 'disabled' ? 'off' : shortModel(status.classifier)],
-    ['Trusted tools', `${status.autoApproveTools}`],
+    [t('config.safetyRules'), `${status.denyPatterns + status.askPatterns}`],
+    [t('config.reviewModel'), status.classifier === 'disabled' ? t('config.off') : shortModel(status.classifier)],
+    [t('config.trustedTools'), `${status.autoApproveTools}`],
   ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 12 }}>
@@ -238,7 +245,7 @@ function Switch({ checked, disabled, onChange, label }: {
 }
 
 /** Status tag in the official plugin-list configTag style. */
-function StatusTag({ enabled }: { enabled: boolean }): ReactNode {
+function StatusTag({ enabled, t }: { enabled: boolean; t: T }): ReactNode {
   return (
     <span style={{
       display: 'inline-flex',
@@ -254,7 +261,7 @@ function StatusTag({ enabled }: { enabled: boolean }): ReactNode {
       lineHeight: '16px',
       whiteSpace: 'nowrap',
     }}>
-      {enabled ? 'Enabled' : 'Disabled'}
+      {enabled ? t('status.enabled') : t('status.disabled')}
     </span>
   )
 }
@@ -264,13 +271,14 @@ function StatusTag({ enabled }: { enabled: boolean }): ReactNode {
 /* ------------------------------------------------------------------ */
 
 function DialogContent({
-  status, history, toggling, error, onToggle,
+  status, history, toggling, error, onToggle, t,
 }: {
   status: AutoApprovalStatus
   history: readonly DecisionRecord[]
   toggling: boolean
   error: string | undefined
   onToggle: () => void
+  t: T
 }): ReactNode {
   return (
     <>
@@ -278,44 +286,42 @@ function DialogContent({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <StatusTag enabled={status.enabled} />
+            <StatusTag enabled={status.enabled} t={t} />
           </div>
           <div style={{ fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY, marginTop: 6 }}>
-            {status.enabled
-              ? 'Safe calls run automatically; dangerous ones are blocked.'
-              : 'All calls go through the normal approval flow.'}
+            {status.enabled ? t('toggle.on.desc') : t('toggle.off.desc')}
           </div>
         </div>
         <Switch
           checked={status.enabled}
           disabled={toggling}
           onChange={onToggle}
-          label={status.enabled ? 'Turn off auto-approval' : 'Turn on auto-approval'}
+          label={status.enabled ? t('toggle.on.aria') : t('toggle.off.aria')}
         />
       </div>
 
       {/* Config summary */}
-      <ConfigSummary status={status} />
+      <ConfigSummary status={status} t={t} />
 
       {/* Cumulative counts */}
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-        <StatTile label="Approved" value={status.approvals} color={SUCCESS} />
-        <StatTile label="Denied" value={status.totalDenials} color={ERROR} />
+        <StatTile label={t('stat.approved')} value={status.approvals} color={SUCCESS} />
+        <StatTile label={t('stat.denied')} value={status.totalDenials} color={ERROR} />
       </div>
 
       {/* Recent decisions */}
       <div style={{ marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }}>
-        Recent decisions
+        {t('history.title')}
         {history.length > 0 && (
           <span style={{ fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }}>
-            {history.length} shown · newest first
+            {t('history.count', { count: history.length })}
           </span>
         )}
       </div>
       {history.length === 0
         ? (
           <div style={{ padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }}>
-            No auto-approval decisions recorded for this session yet.
+            {t('history.empty')}
           </div>
         )
         : (
@@ -325,15 +331,15 @@ function DialogContent({
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={HEADER_CELL}>Time</th>
-                  <th style={HEADER_CELL}>Tool</th>
-                  <th style={HEADER_CELL}>Stage</th>
-                  <th style={HEADER_CELL}>Verdict</th>
-                  <th style={HEADER_CELL}>Detail</th>
+                  <th style={HEADER_CELL}>{t('table.time')}</th>
+                  <th style={HEADER_CELL}>{t('table.tool')}</th>
+                  <th style={HEADER_CELL}>{t('table.stage')}</th>
+                  <th style={HEADER_CELL}>{t('table.verdict')}</th>
+                  <th style={HEADER_CELL}>{t('table.detail')}</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map((record, index) => <DecisionRow key={index} record={record} />)}
+                {history.map((record, index) => <DecisionRow key={index} record={record} t={t} />)}
               </tbody>
             </table>
           </div>
@@ -356,7 +362,7 @@ function DialogContent({
  * tooltip rather than breaking the composer. Clicking opens the dialog
  * (toggle + history).
  */
-export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoApprovalChipProps) {
+export function AutoApprovalChip({ getStatus, getHistory, setEnabled, t }: AutoApprovalChipProps) {
   const [state, setState] = useState<ChipState>({ kind: 'loading' })
   const [dialogOpen, setDialogOpen] = useState(false)
   const [history, setHistory] = useState<readonly DecisionRecord[]>([])
@@ -434,25 +440,25 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
   }, [state, toggling, setEnabled])
 
   let dot = LABEL_CAPTION
-  let label = 'AA'
-  let title = 'auto-approval'
+  let label = t('chip.label')
+  let title = t('chip.title')
 
   if (state.kind === 'loading') {
     dot = LABEL_CAPTION
-    label = 'AA'
-    title = 'auto-approval: loading…'
+    label = t('chip.label')
+    title = t('chip.loading')
   } else if (state.kind === 'error') {
     dot = ERROR
-    label = 'AA'
-    title = `auto-approval: ${state.message}`
+    label = t('chip.label')
+    title = t('chip.error', { message: state.message })
   } else if (!state.status.enabled) {
     dot = LABEL_CAPTION
-    label = 'AA off'
-    title = describe(state.status)
+    label = t('chip.off')
+    title = describe(state.status, t)
   } else {
     dot = SUCCESS
-    label = 'AA on'
-    title = describe(state.status)
+    label = t('chip.on')
+    title = describe(state.status, t)
   }
 
   return (
@@ -476,8 +482,8 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
       <Modal
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title="Auto-approval"
-        closeLabel="Close"
+        title={t('dialog.title')}
+        closeLabel={t('dialog.close')}
         className="aa-modal-wide"
         contentClassName="aa-modal-flush"
       >
@@ -489,13 +495,14 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
               toggling={toggling}
               error={dialogError}
               onToggle={toggle}
+              t={t}
             />
           )
           : (
             <div style={{ fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }}>
               {state.kind === 'loading'
-                ? 'Loading auto-approval status…'
-                : `Status unavailable: ${state.message}`}
+                ? t('dialog.loading')
+                : t('dialog.unavailable', { message: state.message })}
             </div>
           )}
       </Modal>

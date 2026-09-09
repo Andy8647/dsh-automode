@@ -242,7 +242,7 @@ describe('L1 LLM classifier', () => {
     const { ctx, run } = harness(fastRoute)
     provideLlm(ctx, '1', 'dangerous\nVERDICT: DENY')
     const { agent } = fakeAgent([userMessage('delete everything')])
-    expect(await run(makeExec('bash', { command: 'rm -rf ~/docs' }, agent))).toMatchObject({ kind: 'deny' })
+    expect(await run(makeExec('bash', { command: 'rm -rf ./build' }, agent))).toMatchObject({ kind: 'deny' })
     // L1 deny 只进 tracker 计数，白名单工具照常放行（无 pause）
     expect(await run(makeExec('read', { path: 'x' }, agent))).toBe(ALLOW)
   })

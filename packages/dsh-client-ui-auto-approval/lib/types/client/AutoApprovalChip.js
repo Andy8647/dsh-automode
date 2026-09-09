@@ -52,8 +52,8 @@ const DIALOG_WIDTH_CSS = `
 /* Text helpers                                                        */
 /* ------------------------------------------------------------------ */
 /** Cumulative counts as a compact "✓ n · ✗ n" line for the tooltip. */
-function countLine(status) {
-    return `✓ ${status.approvals} approved · ✗ ${status.totalDenials} denied`;
+function countLine(status, t) {
+    return t('chip.counts', { approved: status.approvals, denied: status.totalDenials });
 }
 /** From "provider/model" take the model segment (keeps the tooltip short). */
 function shortModel(classifier) {
@@ -61,8 +61,8 @@ function shortModel(classifier) {
     return slash >= 0 ? classifier.slice(slash + 1) : classifier;
 }
 /** One-line tooltip: cumulative counts only (full config lives in the dialog). */
-function describe(status) {
-    return countLine(status);
+function describe(status, t) {
+    return countLine(status, t);
 }
 /* ------------------------------------------------------------------ */
 /* Decision table pieces                                               */
@@ -86,11 +86,11 @@ const HEADER_CELL = {
     background: BG_LAYER_2,
 };
 /** Verdict label: colored by the official state-token pair (allow/deny only). */
-function VerdictBadge({ decision }) {
+function VerdictBadge({ decision, t }) {
     const color = decision === 'allow' ? SUCCESS : ERROR;
-    return _jsx("span", { style: { color, fontWeight: 600, whiteSpace: 'nowrap' }, children: decision });
+    return (_jsx("span", { style: { color, fontWeight: 600, whiteSpace: 'nowrap' }, children: t(decision === 'allow' ? 'verdict.allow' : 'verdict.deny') }));
 }
-function DecisionRow({ record }) {
+function DecisionRow({ record, t }) {
     const detail = record.pattern !== undefined ? `pattern /${record.pattern}/` : (record.detail ?? '');
     const time = new Date(record.time);
     const timeText = Number.isNaN(time.getTime())
@@ -98,7 +98,7 @@ function DecisionRow({ record }) {
         : time.toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     return (_jsxs("tr", { style: { borderTop: `1px solid ${BORDER_L1}` }, children: [_jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', color: LABEL_CAPTION, fontFamily: MONO_FONT }, children: timeText }), _jsx("td", { style: { ...CELL, whiteSpace: 'nowrap', color: LABEL_PRIMARY, fontFamily: MONO_FONT }, children: record.tool }), _jsx("td", { style: {
                     ...CELL, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
-                }, title: record.stage, children: record.stage }), _jsx("td", { style: CELL, children: _jsx(VerdictBadge, { decision: record.decision }) }), _jsx("td", { style: {
+                }, title: record.stage, children: record.stage }), _jsx("td", { style: CELL, children: _jsx(VerdictBadge, { decision: record.decision, t: t }) }), _jsx("td", { style: {
                     ...CELL, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: LABEL_SECONDARY,
                 }, title: detail, children: detail })] }));
 }
@@ -123,11 +123,11 @@ function StatTile({ label, value, color }) {
 /* Config summary (dialog)                                             */
 /* ------------------------------------------------------------------ */
 /** Formatted armed-config rows: plain-language labels, no internal jargon. */
-function ConfigSummary({ status }) {
+function ConfigSummary({ status, t }) {
     const rows = [
-        ['Safety rules', `${status.denyPatterns + status.askPatterns}`],
-        ['Review model', status.classifier === 'disabled' ? 'off' : shortModel(status.classifier)],
-        ['Trusted tools', `${status.autoApproveTools}`],
+        [t('config.safetyRules'), `${status.denyPatterns + status.askPatterns}`],
+        [t('config.reviewModel'), status.classifier === 'disabled' ? t('config.off') : shortModel(status.classifier)],
+        [t('config.trustedTools'), `${status.autoApproveTools}`],
     ];
     return (_jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: 3, marginTop: 12 }, children: rows.map(([label, value]) => (_jsxs("div", { style: { display: 'flex', gap: 10, fontSize: 12, lineHeight: '18px' }, children: [_jsx("span", { style: { width: 92, flexShrink: 0, color: LABEL_CAPTION }, children: label }), _jsx("span", { style: { color: LABEL_SECONDARY }, children: value })] }, label))) }));
 }
@@ -160,7 +160,7 @@ function Switch({ checked, disabled, onChange, label }) {
             } }) }));
 }
 /** Status tag in the official plugin-list configTag style. */
-function StatusTag({ enabled }) {
+function StatusTag({ enabled, t }) {
     return (_jsx("span", { style: {
             display: 'inline-flex',
             alignItems: 'center',
@@ -174,20 +174,18 @@ function StatusTag({ enabled }) {
             fontSize: 11,
             lineHeight: '16px',
             whiteSpace: 'nowrap',
-        }, children: enabled ? 'Enabled' : 'Disabled' }));
+        }, children: enabled ? t('status.enabled') : t('status.disabled') }));
 }
 /* ------------------------------------------------------------------ */
 /* Dialog body                                                         */
 /* ------------------------------------------------------------------ */
-function DialogContent({ status, history, toggling, error, onToggle, }) {
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, children: [_jsxs("div", { style: { minWidth: 0 }, children: [_jsx("div", { style: { display: 'flex', alignItems: 'center', gap: 8 }, children: _jsx(StatusTag, { enabled: status.enabled }) }), _jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY, marginTop: 6 }, children: status.enabled
-                                    ? 'Safe calls run automatically; dangerous ones are blocked.'
-                                    : 'All calls go through the normal approval flow.' })] }), _jsx(Switch, { checked: status.enabled, disabled: toggling, onChange: onToggle, label: status.enabled ? 'Turn off auto-approval' : 'Turn on auto-approval' })] }), _jsx(ConfigSummary, { status: status }), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: "Approved", value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: "Denied", value: status.totalDenials, color: ERROR })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: ["Recent decisions", history.length > 0 && (_jsxs("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: [history.length, " shown \u00B7 newest first"] }))] }), history.length === 0
-                ? (_jsx("div", { style: { padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: "No auto-approval decisions recorded for this session yet." }))
+function DialogContent({ status, history, toggling, error, onToggle, t, }) {
+    return (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, children: [_jsxs("div", { style: { minWidth: 0 }, children: [_jsx("div", { style: { display: 'flex', alignItems: 'center', gap: 8 }, children: _jsx(StatusTag, { enabled: status.enabled, t: t }) }), _jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY, marginTop: 6 }, children: status.enabled ? t('toggle.on.desc') : t('toggle.off.desc') })] }), _jsx(Switch, { checked: status.enabled, disabled: toggling, onChange: onToggle, label: status.enabled ? t('toggle.on.aria') : t('toggle.off.aria') })] }), _jsx(ConfigSummary, { status: status, t: t }), _jsxs("div", { style: { display: 'flex', gap: 8, marginTop: 16 }, children: [_jsx(StatTile, { label: t('stat.approved'), value: status.approvals, color: SUCCESS }), _jsx(StatTile, { label: t('stat.denied'), value: status.totalDenials, color: ERROR })] }), _jsxs("div", { style: { marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: LABEL_PRIMARY }, children: [t('history.title'), history.length > 0 && (_jsx("span", { style: { fontSize: 11, fontWeight: 400, color: LABEL_CAPTION, marginLeft: 6 }, children: t('history.count', { count: history.length }) }))] }), history.length === 0
+                ? (_jsx("div", { style: { padding: '12px 0', fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: t('history.empty') }))
                 : (
                 // The official dialog is min(380px, 100%) wide; the table scrolls
                 // vertically inside the card rather than stretching it.
-                _jsx("div", { style: { marginTop: 6, maxHeight: '38vh', overflowY: 'auto' }, children: _jsxs("table", { style: { width: '100%', borderCollapse: 'collapse' }, children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { style: HEADER_CELL, children: "Time" }), _jsx("th", { style: HEADER_CELL, children: "Tool" }), _jsx("th", { style: HEADER_CELL, children: "Stage" }), _jsx("th", { style: HEADER_CELL, children: "Verdict" }), _jsx("th", { style: HEADER_CELL, children: "Detail" })] }) }), _jsx("tbody", { children: history.map((record, index) => _jsx(DecisionRow, { record: record }, index)) })] }) })), error !== undefined && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: ERROR }, children: error }))] }));
+                _jsx("div", { style: { marginTop: 6, maxHeight: '38vh', overflowY: 'auto' }, children: _jsxs("table", { style: { width: '100%', borderCollapse: 'collapse' }, children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { style: HEADER_CELL, children: t('table.time') }), _jsx("th", { style: HEADER_CELL, children: t('table.tool') }), _jsx("th", { style: HEADER_CELL, children: t('table.stage') }), _jsx("th", { style: HEADER_CELL, children: t('table.verdict') }), _jsx("th", { style: HEADER_CELL, children: t('table.detail') })] }) }), _jsx("tbody", { children: history.map((record, index) => _jsx(DecisionRow, { record: record, t: t }, index)) })] }) })), error !== undefined && (_jsx("div", { style: { marginTop: 10, fontSize: 12, lineHeight: '18px', color: ERROR }, children: error }))] }));
 }
 /* ------------------------------------------------------------------ */
 /* Chip                                                                */
@@ -198,7 +196,7 @@ function DialogContent({ status, history, toggling, error, onToggle, }) {
  * tooltip rather than breaking the composer. Clicking opens the dialog
  * (toggle + history).
  */
-export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
+export function AutoApprovalChip({ getStatus, getHistory, setEnabled, t }) {
     const [state, setState] = useState({ kind: 'loading' });
     const [dialogOpen, setDialogOpen] = useState(false);
     const [history, setHistory] = useState([]);
@@ -276,32 +274,32 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }) {
         });
     }, [state, toggling, setEnabled]);
     let dot = LABEL_CAPTION;
-    let label = 'AA';
-    let title = 'auto-approval';
+    let label = t('chip.label');
+    let title = t('chip.title');
     if (state.kind === 'loading') {
         dot = LABEL_CAPTION;
-        label = 'AA';
-        title = 'auto-approval: loading…';
+        label = t('chip.label');
+        title = t('chip.loading');
     }
     else if (state.kind === 'error') {
         dot = ERROR;
-        label = 'AA';
-        title = `auto-approval: ${state.message}`;
+        label = t('chip.label');
+        title = t('chip.error', { message: state.message });
     }
     else if (!state.status.enabled) {
         dot = LABEL_CAPTION;
-        label = 'AA off';
-        title = describe(state.status);
+        label = t('chip.off');
+        title = describe(state.status, t);
     }
     else {
         dot = SUCCESS;
-        label = 'AA on';
-        title = describe(state.status);
+        label = t('chip.on');
+        title = describe(state.status, t);
     }
-    return (_jsxs(_Fragment, { children: [_jsx("style", { children: DIALOG_WIDTH_CSS }), _jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: "Auto-approval", closeLabel: "Close", className: "aa-modal-wide", contentClassName: "aa-modal-flush", children: state.kind === 'status'
-                    ? (_jsx(DialogContent, { status: state.status, history: history, toggling: toggling, error: dialogError, onToggle: toggle }))
+    return (_jsxs(_Fragment, { children: [_jsx("style", { children: DIALOG_WIDTH_CSS }), _jsx(Tooltip, { label: title, side: "top", delayMs: 300, children: _jsx("span", { style: { display: 'inline-flex' }, children: _jsxs(Pill, { onClick: () => setDialogOpen(true), "aria-label": title, "aria-haspopup": "dialog", children: [_jsx("span", { style: { width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }, "aria-hidden": true }), label] }) }) }), _jsx(Modal, { open: dialogOpen, onClose: () => setDialogOpen(false), title: t('dialog.title'), closeLabel: t('dialog.close'), className: "aa-modal-wide", contentClassName: "aa-modal-flush", children: state.kind === 'status'
+                    ? (_jsx(DialogContent, { status: state.status, history: history, toggling: toggling, error: dialogError, onToggle: toggle, t: t }))
                     : (_jsx("div", { style: { fontSize: 12, lineHeight: '18px', color: LABEL_SECONDARY }, children: state.kind === 'loading'
-                            ? 'Loading auto-approval status…'
-                            : `Status unavailable: ${state.message}` })) })] }));
+                            ? t('dialog.loading')
+                            : t('dialog.unavailable', { message: state.message }) })) })] }));
 }
 //# sourceMappingURL=AutoApprovalChip.js.map

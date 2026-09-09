@@ -13,10 +13,13 @@
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+// Type-only: pulls the locale plugin's Context merge (ctx.locale).
+import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the renderer-owned `ctx.slots` service merge.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the ui-session SessionStandardProps merge (branded SessionIdOf).
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import { en, zh } from './locales.ts'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the ui-conversation SlotMap merge (the input.left seat + SessionStandardProps).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -43,8 +46,11 @@ interface AutoApprovalRemoteNamespace {
   setEnabled: (agentId: SessionId, enabled: boolean) => Promise<RemoteResult<AutoApprovalStatus>>
 }
 
-/** Required services: the seat's slot registry and the Client Remote mount. */
-export const inject = ['slots', 'remote']
+/** Required services: the seat's slot registry, the Client Remote mount, and the locale registry. */
+export const inject = ['slots', 'remote', 'locale']
+
+/** Locale namespace owning this chip's dictionaries (follows the DSH locale setting). */
+const LOCALE_NS = 'auto-approval'
 
 /**
  * Client plugin body: mount the host remote contribution, then register the
@@ -59,6 +65,9 @@ export const inject = ['slots', 'remote']
  * @param ctx - client root context.
  */
 export async function apply(ctx: ClientContext): Promise<void> {
+  // Dictionaries first: the slot registration below declares `locale: LOCALE_NS`,
+  // which makes the framework inject the typed `t` seat into the component.
+  ctx.effect(() => ctx.locale.register(LOCALE_NS, { zh, en }), 'ui-auto-approval: dictionaries')
   // Mount the host's autoApprovalStatus remote before anything can call it.
   await ctx.remote.$mount(TYPERT_REMOTE)
   const statusRemote = ctx.get('remote.autoApprovalStatus') as AutoApprovalRemoteNamespace
@@ -66,6 +75,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
     name: 'conversation.input.left',
     id: 'auto-approval-status',
+    locale: LOCALE_NS,
     order: 0,
     inject: (sessionId: SessionId): AutoApprovalChipInjected => ({
       getStatus: () => statusRemote.getStatus(sessionId),

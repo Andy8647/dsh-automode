@@ -11,7 +11,7 @@ export interface AutoApprovalChipInjected {
     /** Toggle auto-approval on/off (persisted via host settings when available). */
     setEnabled: (enabled: boolean) => Promise<RemoteResult<AutoApprovalStatus>>;
 }
-/** Required services: the seat's slot registry and the Client Remote mount. */
+/** Required services: the seat's slot registry, the Client Remote mount, and the locale registry. */
 export declare const inject: string[];
 /**
  * Client plugin body: mount the host remote contribution, then register the

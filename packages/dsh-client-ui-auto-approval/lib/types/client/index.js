@@ -1,7 +1,10 @@
+import { en, zh } from "./locales.js";
 import { AutoApprovalChip } from "./AutoApprovalChip.js";
 import { TYPERT_REMOTE } from "./remote.js";
-/** Required services: the seat's slot registry and the Client Remote mount. */
-export const inject = ['slots', 'remote'];
+/** Required services: the seat's slot registry, the Client Remote mount, and the locale registry. */
+export const inject = ['slots', 'remote', 'locale'];
+/** Locale namespace owning this chip's dictionaries (follows the DSH locale setting). */
+const LOCALE_NS = 'auto-approval';
 /**
  * Client plugin body: mount the host remote contribution, then register the
  * status chip into the composer input-left list slot.
@@ -15,12 +18,16 @@ export const inject = ['slots', 'remote'];
  * @param ctx - client root context.
  */
 export async function apply(ctx) {
+    // Dictionaries first: the slot registration below declares `locale: LOCALE_NS`,
+    // which makes the framework inject the typed `t` seat into the component.
+    ctx.effect(() => ctx.locale.register(LOCALE_NS, { zh, en }), 'ui-auto-approval: dictionaries');
     // Mount the host's autoApprovalStatus remote before anything can call it.
     await ctx.remote.$mount(TYPERT_REMOTE);
     const statusRemote = ctx.get('remote.autoApprovalStatus');
     ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
         name: 'conversation.input.left',
         id: 'auto-approval-status',
+        locale: LOCALE_NS,
         order: 0,
         inject: (sessionId) => ({
             getStatus: () => statusRemote.getStatus(sessionId),

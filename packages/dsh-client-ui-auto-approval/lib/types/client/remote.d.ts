@@ -1,25 +1,27 @@
+/**
+ * Hand-written Typert Remote contribution for the host
+ * `dsh-auto-approval` service.
+ *
+ * The upstream build generates this artifact from the Host FaceModel
+ * (`@deepseek-ai/dsh-typert-generator` → `typert.remote-client.js`); this
+ * standalone repo hand-writes it because the remote is a small hand-curated
+ * surface and the generator is a whole-workspace TypeScript analyzer.
+ *
+ * Two halves must stay in lockstep with the host service
+ * (`dsh-auto-approval/src/remote.ts`):
+ * - the wire schemas (hand-rolled strict parsers in `./schema.ts`) must parse
+ *   exactly what `AutoApprovalStatusService` returns;
+ * - the `TypertRemoteMap`/`TypertRemoteScopeMap` declaration merges type
+ *   `ctx.remote.autoApprovalStatus.*` on the client.
+ *
+ * The `agent` parameter is a Typert lookup (`TypertLookupMap['agent']` =
+ * `TypertLookup<Agent, SessionId>`, registered by the core `agents` service),
+ * so its wire field is `agentId` and the client passes a `SessionId`.
+ */
 import type { RemoteResult, TypertRemoteContribution, TypertRemoteNamespace } from '@deepseek-ai/dsh-typert-protocol';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-/** Wire snapshot of the host auto-approval runtime state (mirror of host `AutoApprovalStatus`). */
-export interface AutoApprovalStatus {
-    readonly enabled: boolean;
-    readonly denyPatterns: number;
-    readonly askPatterns: number;
-    readonly autoApproveTools: number;
-    readonly classifier: string;
-    readonly denials: number;
-    readonly approvals: number;
-    readonly totalDenials: number;
-}
-/** Wire record of one auto-approval decision (mirror of host `DecisionRecord`). */
-export interface DecisionRecord {
-    readonly time: string;
-    readonly tool: string;
-    readonly stage: string;
-    readonly decision: 'allow' | 'deny';
-    readonly pattern?: string;
-    readonly detail?: string;
-}
+import type { AutoApprovalStatus, DecisionRecord } from './schema.ts';
+export type { AutoApprovalStatus, DecisionRecord } from './schema.ts';
 /**
  * The generated Host-for-Client contribution, mounted by the client half via
  * `ctx.remote.$mount(TYPERT_REMOTE)`.

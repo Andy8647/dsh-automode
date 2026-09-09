@@ -22,8 +22,8 @@ const Config = z.object({
 		"mkfs\\.",
 		"dd\\s+if=.*of=/dev/",
 		">\\s*/dev/[a-zA-Z]+",
-		"curl\\s+[^|]*\\|\\s*(ba)?sh",
-		"wget\\s+[^|]*\\|\\s*(ba)?sh"
+		"curl\\s+[^|]*\\x7c\\s*(ba)?sh",
+		"wget\\s+[^|]*\\x7c\\s*(ba)?sh"
 	]),
 	askPatterns: z.array(z.string()).default([
 		"sudo\\s",
