@@ -6,6 +6,8 @@
 
 权限模型保持 3 + 1：官方三档沙箱，外加一档全托管。选其它 preset 即等于关掉本插件，没有第二个开关。
 
+> **替代 [`dsh-auto-approval`](https://github.com/Andy8647/dsh-auto-approval)（已弃用）。** 旧插件只挂 `tools/pre-execute`，DSH 自己的审批通道（尤其是沙箱升级）照旧弹给用户。迁移见 [从 dsh-auto-approval 迁移](#从-dsh-auto-approval-迁移)。
+
 ## 工作原理
 
 ```text
@@ -35,6 +37,30 @@ dsh plugin --profile web add dsh-automode
 然后在输入栏旁的权限下拉里选 **Automode**（或 `/permission automode`）。第一次选会在浏览器里弹一次性提示，说明这档的取舍（官方那个「Enable Full access?」确认硬编码在 `danger-full-access` 键上，自定义 preset 不会触发）。之后预设选择器旁边会出现 `Auto` 胶囊：累计放行/拦截计数，点开是决策表。
 
 源码方式：clone 后 `pnpm install && pnpm run build`，再 `dsh plugin --profile web add link:/<路径>`。
+
+## 从 dsh-auto-approval 迁移
+
+| | `dsh-auto-approval`（已弃用） | `dsh-automode` |
+|---|---|---|
+| 开关 | 插件设置 `enabled` + UI 里的 switch | **Automode** 权限 preset |
+| npm | `dsh-auto-approval` + `dsh-client-ui-auto-approval` | `dsh-automode`（一个包） |
+| settings section | `auto-approval:` | `automode:` |
+| 沙箱 | 看当前 preset；升级请求照样弹给用户 | 完全权限 + 审批 `never`，不弹窗 |
+| L1 未配置 | 全部放行（橡皮图章） | 白名单外一律拒绝 |
+
+```sh
+# 1. 卸掉旧插件（两个包）
+dsh plugin --profile web remove dsh-auto-approval dsh-client-ui-auto-approval
+
+# 2. 装新的
+dsh plugin --profile web add dsh-automode
+
+# 3. 把 settings.yaml 里的 auto-approval: 段改名为 automode:
+#    并配上分类器，否则只有免检工具能跑
+# 4. 重启 dsh，然后在权限下拉里选 Automode
+```
+
+分类器配置项名称没变（`denyPatterns`、`autoApproveTools`、`bashCommandPrefixes`、`classifierFastProvider` / `classifierFastModel` …），变的只有 section 名和开关模型。
 
 ## 配置
 

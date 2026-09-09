@@ -53,6 +53,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsdown",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

@@ -6,6 +6,8 @@ A **fourth permission preset** for DeepSeek Harness: pick **Automode** in the co
 
 The permission model stays 3 + 1: the three official sandbox levels, plus one auto tier. Selecting any other preset turns the plugin off; there is no second switch.
 
+> **Replaces [`dsh-auto-approval`](https://github.com/Andy8647/dsh-auto-approval) (deprecated).** That plugin only hooked `tools/pre-execute`, so DeepSeek Harness's own approval prompts — sandbox escalation in particular — still went to the user. See [Migrating](#migrating-from-dsh-auto-approval).
+
 ## How it works
 
 ```text
@@ -35,6 +37,30 @@ dsh plugin --profile web add dsh-automode
 Then pick **Automode** in the permission dropdown next to the composer (or `/permission automode`). The first time you do so in a browser, a one-time notice explains the trade-off (the official "Enable Full access?" gate is keyed to `danger-full-access` and never fires for a custom preset). The `Auto` chip then appears beside the preset selector with cumulative allow/deny counts and a click-through decision table.
 
 Source install: clone the repo, `pnpm install && pnpm run build`, then `dsh plugin --profile web add link:/<path>`.
+
+## Migrating from dsh-auto-approval
+
+| | `dsh-auto-approval` (deprecated) | `dsh-automode` |
+|---|---|---|
+| Switch | plugin setting `enabled` + a UI switch | the **Automode** permission preset |
+| npm | `dsh-auto-approval` + `dsh-client-ui-auto-approval` | `dsh-automode` (one package) |
+| Settings section | `auto-approval:` | `automode:` |
+| Sandbox | whatever preset was active; escalations still prompted the user | full access + approval `never`, no prompts |
+| L1 unconfigured | allowed everything (a rubber stamp) | denies everything outside the allowlists |
+
+```sh
+# 1. remove the old plugin (both packages)
+dsh plugin --profile web remove dsh-auto-approval dsh-client-ui-auto-approval
+
+# 2. install the new one
+dsh plugin --profile web add dsh-automode
+
+# 3. move the settings section: auto-approval: → automode:
+#    and configure a classifier, or only trusted tools will run
+# 4. restart dsh, then pick Automode in the permission dropdown
+```
+
+The classifier config keys are unchanged (`denyPatterns`, `autoApproveTools`, `bashCommandPrefixes`, `classifierFastProvider` / `classifierFastModel`, …); only the section name and the on/off model changed.
 
 ## Configuration
 
