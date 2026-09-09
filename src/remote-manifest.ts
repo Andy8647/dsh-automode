@@ -64,7 +64,7 @@ const agentParameter = {
 /** The three Remote invocations, hand-written to match the generated descriptor shape. */
 const descriptors: InvocationDescriptor[] = [
   {
-    id: 'dsh-automode#automodeStatus/getStatus',
+    id: '@andy8647/dsh-automode#automodeStatus/getStatus',
     service: 'automodeStatus',
     namespace: 'automodeStatus',
     method: 'getStatus',
@@ -73,12 +73,12 @@ const descriptors: InvocationDescriptor[] = [
     parameters: [agentParameter],
     result: {
       mode: 'strict',
-      typeSymbol: 'dsh-automode#AutomodeStatus',
+      typeSymbol: '@andy8647/dsh-automode#AutomodeStatus',
       schema: statusSchema,
     },
   },
   {
-    id: 'dsh-automode#automodeStatus/getHistory',
+    id: '@andy8647/dsh-automode#automodeStatus/getHistory',
     service: 'automodeStatus',
     namespace: 'automodeStatus',
     method: 'getHistory',
@@ -87,7 +87,7 @@ const descriptors: InvocationDescriptor[] = [
     parameters: [agentParameter],
     result: {
       mode: 'strict',
-      typeSymbol: 'dsh-automode#DecisionRecord[]',
+      typeSymbol: '@andy8647/dsh-automode#DecisionRecord[]',
       schema: z.array(decisionRecordSchema).readonly(),
     },
   },
@@ -100,7 +100,7 @@ const descriptors: InvocationDescriptor[] = [
  * tooling, and this plugin exposes no public schemas or model surface.
  */
 export const remoteManifest = {
-  package: 'dsh-automode',
+  package: '@andy8647/dsh-automode',
   face: 'host',
   schemas: [],
   model: { services: [], events: [], objects: [] },

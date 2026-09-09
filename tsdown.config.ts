@@ -12,7 +12,7 @@ import { defineConfig } from 'tsdown'
  *   everything else is inlined.
  */
 
-const ID = 'dsh-automode'
+const ID = '@andy8647/dsh-automode'
 
 /** Module specifiers the shell shares into the frozen browser module table. */
 const PLATFORM_MODULES = [

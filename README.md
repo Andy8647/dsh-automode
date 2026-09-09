@@ -37,7 +37,7 @@ The preset writes the same knobs as `danger-full-access` (full access + approval
 ## Install
 
 ```sh
-dsh plugin --profile web add dsh-automode
+dsh plugin --profile web add @andy8647/dsh-automode
 ```
 
 Then pick **Automode** in the permission dropdown next to the composer (or `/permission automode`). The first time you do so in a browser, a one-time notice explains the trade-off (the official "Enable Full access?" gate is keyed to `danger-full-access` and never fires for a custom preset). The `Auto` chip then appears beside the preset selector with cumulative allow/deny counts and a click-through decision table.
@@ -49,7 +49,7 @@ Source install: clone the repo, `pnpm install && pnpm run build`, then `dsh plug
 | | `dsh-auto-approval` (deprecated) | `dsh-automode` |
 |---|---|---|
 | Switch | plugin setting `enabled` + a UI switch | the **Automode** permission preset |
-| npm | `dsh-auto-approval` + `dsh-client-ui-auto-approval` | `dsh-automode` (one package) |
+| npm | `dsh-auto-approval` + `dsh-client-ui-auto-approval` | `@andy8647/dsh-automode` (one package) |
 | Settings section | `auto-approval:` | `automode:` |
 | Sandbox | whatever preset was active; escalations still prompted the user | full access + approval `never`, no prompts |
 | L1 unconfigured | allowed everything (a rubber stamp) | denies everything outside the allowlists |
@@ -59,7 +59,7 @@ Source install: clone the repo, `pnpm install && pnpm run build`, then `dsh plug
 dsh plugin --profile web remove dsh-auto-approval dsh-client-ui-auto-approval
 
 # 2. install the new one
-dsh plugin --profile web add dsh-automode
+dsh plugin --profile web add @andy8647/dsh-automode
 
 # 3. move the settings section: auto-approval: → automode:
 #    and configure a classifier, or only trusted tools will run

@@ -49,10 +49,10 @@ const agentParameter = {
  * `ctx.remote.$mount(TYPERT_REMOTE)`.
  */
 export const TYPERT_REMOTE: TypertRemoteContribution = {
-  package: 'dsh-automode',
+  package: '@andy8647/dsh-automode',
   descriptors: [
     {
-      id: 'dsh-automode#automodeStatus/getStatus',
+      id: '@andy8647/dsh-automode#automodeStatus/getStatus',
       service: 'automodeStatus',
       namespace: 'automodeStatus',
       method: 'getStatus',
@@ -61,12 +61,12 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       parameters: [agentParameter],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-automode#AutomodeStatus',
+        typeSymbol: '@andy8647/dsh-automode#AutomodeStatus',
         schema: statusSchema,
       },
     },
     {
-      id: 'dsh-automode#automodeStatus/getHistory',
+      id: '@andy8647/dsh-automode#automodeStatus/getHistory',
       service: 'automodeStatus',
       namespace: 'automodeStatus',
       method: 'getHistory',
@@ -75,7 +75,7 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       parameters: [agentParameter],
       result: {
         mode: 'strict',
-        typeSymbol: 'dsh-automode#DecisionRecord[]',
+        typeSymbol: '@andy8647/dsh-automode#DecisionRecord[]',
         schema: decisionListSchema,
       },
     },

@@ -13,7 +13,7 @@
 #      distinguishable in the UI.
 - insert:
     - id: automode
-      name: dsh-automode
+      name: '@andy8647/dsh-automode'
 
 - id: permission
   config:

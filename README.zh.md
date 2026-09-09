@@ -37,7 +37,7 @@ automode preset 写的是和「完全权限」同一组旋钮（完全权限 + �
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-automode
+dsh plugin --profile web add @andy8647/dsh-automode
 ```
 
 然后在输入栏旁的权限下拉里选 **Automode**（或 `/permission automode`）。第一次选会在浏览器里弹一次性提示，说明这档的取舍（官方那个「Enable Full access?」确认硬编码在 `danger-full-access` 键上，自定义 preset 不会触发）。之后预设选择器旁边会出现 `Auto` 胶囊：累计放行/拦截计数，点开是决策表。
@@ -49,7 +49,7 @@ dsh plugin --profile web add dsh-automode
 | | `dsh-auto-approval`（已弃用） | `dsh-automode` |
 |---|---|---|
 | 开关 | 插件设置 `enabled` + UI 里的 switch | **Automode** 权限 preset |
-| npm | `dsh-auto-approval` + `dsh-client-ui-auto-approval` | `dsh-automode`（一个包） |
+| npm | `dsh-auto-approval` + `dsh-client-ui-auto-approval` | `@andy8647/dsh-automode`（一个包） |
 | settings section | `auto-approval:` | `automode:` |
 | 沙箱 | 看当前 preset；升级请求照样弹给用户 | 完全权限 + 审批 `never`，不弹窗 |
 | L1 未配置 | 全部放行（橡皮图章） | 白名单外一律拒绝 |
@@ -59,7 +59,7 @@ dsh plugin --profile web add dsh-automode
 dsh plugin --profile web remove dsh-auto-approval dsh-client-ui-auto-approval
 
 # 2. 装新的
-dsh plugin --profile web add dsh-automode
+dsh plugin --profile web add @andy8647/dsh-automode
 
 # 3. 把 settings.yaml 里的 auto-approval: 段改名为 automode:
 #    并配上分类器，否则只有免检工具能跑
