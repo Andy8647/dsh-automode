@@ -32,7 +32,7 @@ The preset writes the same knobs as `danger-full-access` (full access + approval
 dsh plugin --profile web add dsh-automode
 ```
 
-Then pick **Automode** in the permission dropdown next to the composer (or `/permission automode`). The `Auto` chip appears beside the preset selector with cumulative allow/deny counts and a click-through decision table.
+Then pick **Automode** in the permission dropdown next to the composer (or `/permission automode`). The first time you do so in a browser, a one-time notice explains the trade-off (the official "Enable Full access?" gate is keyed to `danger-full-access` and never fires for a custom preset). The `Auto` chip then appears beside the preset selector with cumulative allow/deny counts and a click-through decision table.
 
 Source install: clone the repo, `pnpm install && pnpm run build`, then `dsh plugin --profile web add link:/<path>`.
 
@@ -56,7 +56,7 @@ automode:
 
 Every key is optional. `denyPatterns` / `autoApproveTools` / `bashCommandPrefixes` **replace** the defaults wholesale (YAML arrays do not merge), so restate the values you want to keep.
 
-Without `classifierFastProvider`/`classifierFastModel` there is no L1: only the L0 rules and the allowlists run, and everything else is allowed. Configure a model for a real safety net.
+Without `classifierFastProvider`/`classifierFastModel` there is no L1, and automode fails closed: only trusted tools and allowlisted commands run, everything else is denied. That is deliberate — a session with no classifier is not a safety net, and silently allowing everything would make the gate a rubber stamp.
 
 ## Permissions and data
 

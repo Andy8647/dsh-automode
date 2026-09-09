@@ -20,10 +20,8 @@ export type DecisionStage =
   | 'L0-deny'
   /** L0 自毁护栏：终止宿主进程的命令。 */
   | 'L0-selfkill'
-  /** L0 ask 规则命中（语义已改：askPatterns 命中即 deny，全托管不转人工）。 */
+  /** L0 ask 规则命中（语义已改：askPatterns 命中即 deny）。 */
   | 'L0-ask'
-  /** M5：escalation 参数豁免，交给 sandbox 升级通道审批。 */
-  | 'escalation-bypass'
   /** autoApproveTools 白名单。 */
   | 'whitelist'
   /** L1 Stage 1 fast 过滤直接放行。 */
@@ -32,8 +30,8 @@ export type DecisionStage =
   | 'L1-deep'
   /** L1 不可用（无模型/无意图/超时/解析失败），fail-closed 转 deny。 */
   | 'L1-fail-closed'
-  /** 未命中任何规则，默认放行。 */
-  | 'default-allow'
+  /** 未配置分类器路由：白名单之外 fail-closed deny。 */
+  | 'L1-unconfigured'
 
 /** `automode/decision` 事件载荷（必须 lossless JSON）。
  * 全托管收敛为 allow/deny 两态：不确定的调用（原 askPatterns 命中、L1 ASK、

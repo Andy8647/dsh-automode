@@ -42,6 +42,9 @@ const AUTOMODE_PRESET = 'automode'
 /** Poll cadence while the chip stays mounted (no event forwarding for third-party remotes). */
 const POLL_MS = 2000
 
+/** One-time acknowledgment flag: Automode shares full access with no approval prompts. */
+const ACK_KEY = 'dsh-automode:acknowledged'
+
 type ChipState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'error'; readonly message: string }
@@ -272,8 +275,32 @@ export function AutomodeChip({ getStatus, getHistory, useProjection, t }: Automo
   const active = permissions !== undefined && permissions.currentValue === AUTOMODE_PRESET
   const [state, setState] = useState<ChipState>({ kind: 'loading' })
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [ackOpen, setAckOpen] = useState(false)
   const [history, setHistory] = useState<readonly DecisionRecord[]>([])
   const alive = useRef(true)
+
+  // First use of Automode in this browser: explain the trade-off once. The
+  // official "Enable Full access?" gate is keyed to `danger-full-access` and
+  // never fires for a custom preset, so this preset carries its own notice.
+  useEffect(() => {
+    if (!active) return
+    let seen = '1'
+    try {
+      seen = localStorage.getItem(ACK_KEY) ?? ''
+    } catch {
+      return // storage unavailable: don't nag on every render
+    }
+    if (seen !== '1') setAckOpen(true)
+  }, [active])
+
+  const acknowledge = useCallback((): void => {
+    try {
+      localStorage.setItem(ACK_KEY, '1')
+    } catch {
+      // Storage unavailable: the notice shows again next mount; harmless.
+    }
+    setAckOpen(false)
+  }, [])
 
   const pollStatus = useCallback((): void => {
     void getStatus().then(
@@ -354,6 +381,17 @@ export function AutomodeChip({ getStatus, getHistory, useProjection, t }: Automo
           </Pill>
         </span>
       </Tooltip>
+      <Modal
+        open={ackOpen}
+        onClose={acknowledge}
+        title={t('ack.title')}
+        closeLabel={t('dialog.close')}
+      >
+        <div style={{ fontSize: 13, lineHeight: '20px', color: LABEL_SECONDARY }}>{t('ack.body')}</div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <Pill onClick={acknowledge}>{t('ack.confirm')}</Pill>
+        </div>
+      </Modal>
       <Modal
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}

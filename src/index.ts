@@ -51,6 +51,9 @@ const L1_UNAVAILABLE_REASON = 'automode: automatic classifier is unavailable; th
 /** L1 判定失败（超时/解析失败）时 fail-closed 的 deny 文案。 */
 const L1_FAILED_REASON = 'automode: automatic classifier failed; the call is denied.'
 
+/** 未配置 L1 路由时的 deny 文案（fail-closed，避免橡皮图章）。 */
+const L1_UNCONFIGURED_REASON = 'automode: no classifier is configured; only trusted tools and allowlisted commands may run. Configure classifierFastProvider/classifierFastModel to enable automode.'
+
 /**
  * 从 session log 提取最近一条真实用户消息的文本（L1 的意图输入）。
  * 只看 `source.kind === 'user'` 的消息：plugin 注入（ask-user 类工具的
@@ -152,11 +155,17 @@ export function apply(ctx: Context, config: Config = {}): void {
   })
 
   const arm = (): void => {
+    if (resolved.classifier === undefined) {
+      logger.warn(
+        'automode: no classifier configured (classifierFastProvider/classifierFastModel) — ' +
+        'only trusted tools and allowlisted commands will run; every other call is denied.',
+      )
+    }
     logger.info(
       `automode armed: ${resolved.deny.length} deny patterns (+${resolved.ask.length} legacy ask patterns, now deny), ` +
       `${resolved.autoApproveTools.size} auto-approve tools, ${resolved.bashCommandPrefixes.length} bash prefixes, ` +
       (resolved.classifier === undefined
-        ? ', L1 disabled'
+        ? ', L1 disabled (fail-closed outside the allowlists)'
         : `, L1 fast=${resolved.classifier.fast.provider}/${resolved.classifier.fast.model}`),
     )
     auditArmed(ctx, {
@@ -300,9 +309,13 @@ export function apply(ctx: Context, config: Config = {}): void {
       return next()
     }
 
-    // ---- 未命中任何规则：默认放行（与瀑布 fallback 一致） ----
-    auditDecision(ctx, agent, { tool: exec.name, callId, stage: 'default-allow', decision: 'allow' })
-    return next()
+    // ---- 未配置 L1：fail-closed ----
+    // automode 的定义是“全权限 + 分类器兜底”；没有分类器时若默认放行，这道
+    // 闸门就成了橡皮图章（什么都放行却看起来在审）。所以白名单之外一律 deny，
+    // 逼用户先配 `classifierFastProvider` / `classifierFastModel`。
+    tracker.recordDenial(agent)
+    auditDecision(ctx, agent, { tool: exec.name, callId, stage: 'L1-unconfigured', decision: 'deny' })
+    return { kind: 'deny', reason: L1_UNCONFIGURED_REASON }
   }, { prepend: true })
 
   // settings 服务缺席（无 inject 回调）时，entry config 已在上面手动 resolve。

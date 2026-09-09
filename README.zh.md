@@ -32,7 +32,7 @@ automode preset 写的是和「完全权限」同一组旋钮（完全权限 + �
 dsh plugin --profile web add dsh-automode
 ```
 
-然后在输入栏旁的权限下拉里选 **Automode**（或 `/permission automode`）。预设选择器旁边会出现 `Auto` 胶囊：累计放行/拦截计数，点开是决策表。
+然后在输入栏旁的权限下拉里选 **Automode**（或 `/permission automode`）。第一次选会在浏览器里弹一次性提示，说明这档的取舍（官方那个「Enable Full access?」确认硬编码在 `danger-full-access` 键上，自定义 preset 不会触发）。之后预设选择器旁边会出现 `Auto` 胶囊：累计放行/拦截计数，点开是决策表。
 
 源码方式：clone 后 `pnpm install && pnpm run build`，再 `dsh plugin --profile web add link:/<路径>`。
 
@@ -56,7 +56,7 @@ automode:
 
 所有键都可选。`denyPatterns` / `autoApproveTools` / `bashCommandPrefixes` 是**整体替换**默认值（YAML 数组不合并），要保留的默认项得自己写全。
 
-不配 `classifierFastProvider`/`classifierFastModel` 就没有 L1：只跑 L0 规则和白名单，其余一律放行。想要真正的安全兜底，请配一个模型。
+不配 `classifierFastProvider`/`classifierFastModel` 就没有 L1，此时 automode **fail-closed**：只有免检工具和白名单命令能跑，其余一律拒绝。这是故意的——没有分类器的会话不是安全兜底，默认放行只会让这道闸门变成橡皮图章。
 
 ## 权限与数据
 

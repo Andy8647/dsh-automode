@@ -14,7 +14,7 @@ function fakeAgent(): Agent {
 
 function event(overrides: Partial<{
   tool: string
-  stage: 'L0-deny' | 'L0-ask' | 'whitelist' | 'default-allow'
+  stage: 'L0-deny' | 'L0-ask' | 'whitelist' | 'L1-unconfigured'
   decision: 'allow' | 'deny'
   pattern: string
   detail: string

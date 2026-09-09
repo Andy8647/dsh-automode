@@ -97,9 +97,17 @@ describe('pre-execute 拦截（L0 规则引擎）', () => {
     expect(await run(makeExec('read', { path: '/tmp/x' }))).toBe(ALLOW)
   })
 
-  it('未命中任何规则默认放行', async () => {
+  it('未配置分类器：白名单之外 fail-closed deny', async () => {
     const { run } = harness()
-    expect(await run(makeExec('bash', { command: 'pnpm test' }))).toBe(ALLOW)
+    // 免检工具仍直接放行
+    expect(await run(makeExec('read', { path: '/tmp/x' }))).toBe(ALLOW)
+    // bash 前缀白名单（显式配置）仍直接放行
+    const withPrefix = harness({ bashCommandPrefixes: ['pnpm test'] })
+    expect(await withPrefix.run(makeExec('bash', { command: 'pnpm test' }))).toBe(ALLOW)
+    // 其余命令：没有分类器时不再默认放行
+    const decision = await run(makeExec('bash', { command: 'echo arbitrary-command' }))
+    expect(decision).toMatchObject({ kind: 'deny' })
+    expect((decision as { reason?: string }).reason).toContain('no classifier is configured')
   })
 
   it('非 automode preset 完全旁路（deny 规则也不生效）', async () => {
@@ -195,8 +203,9 @@ describe('settings 热更新（Web UI 开关）', () => {
     const exec = () => makeExec('bash', { command: 'hot-secret' }, agent)
     expect(await run(exec())).toMatchObject({ kind: 'deny' })
     settings.flip({ denyPatterns: [] })
-    expect(await run(exec())).toBe(ALLOW)
-    // guard 同样热生效
+    // L0 规则已移除：不再命中 deny；没有分类器时落到 L1-unconfigured（同样 deny，但原因不同）
+    expect(await run(exec())).toMatchObject({ kind: 'deny' })
+    // guard 同步热生效
     expect(guards[0]?.(exec())).toBeUndefined()
     settings.flip({ denyPatterns: ['hot-secret'] })
     expect(await run(exec())).toMatchObject({ kind: 'deny' })
@@ -286,13 +295,13 @@ describe('remote 状态 / 历史', () => {
     apply(ctx, { denyPatterns: ['forbidden'] })
     const run = (exec: ToolExecution) => ctx.waterfall('tools/pre-execute', exec, async (): Promise<PreToolDecision> => ALLOW)
     const { agent } = fakeAgent()
-    await run(makeExec('bash', { command: 'forbidden' }, agent))   // deny
+    await run(makeExec('bash', { command: 'forbidden' }, agent))   // L0 deny
     await run(makeExec('bash', { command: 'sudo x' }, agent))      // legacy ask → deny
     await run(makeExec('read', { path: '/tmp/x' }, agent))         // whitelist allow
-    await run(makeExec('bash', { command: 'pnpm test' }, agent))   // default allow
+    await run(makeExec('bash', { command: 'pnpm test' }, agent))   // 无分类器 → L1-unconfigured deny
     const service = ctx.get('automodeStatus') as unknown as { getStatus(agent: Agent): unknown }
     const status = service.getStatus(agent) as { approvals: number; totalDenials: number }
-    expect(status).toMatchObject({ approvals: 2, totalDenials: 2 })
+    expect(status).toMatchObject({ approvals: 1, totalDenials: 3 })
   })
 
   it('getHistory 返回最近决策（新→旧，含 pattern）', async () => {
