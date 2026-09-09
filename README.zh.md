@@ -19,13 +19,10 @@ DSH 权限自动审批插件 —— 给 approval policy 加第三档 `auto`，cl
 
 ## 安装
 
-两个包都装到同一个 profile（npm 发布，装的是构建产物，无需构建环境）：
+一条命令把两个包都装到同一个 profile（npm 发布，装的是构建产物，无需构建环境）。host 包把 client 伴侣声明为依赖，AA 状态 chip 会一起装上：
 
 ```sh
-# host 半（必装：审批决策逻辑）
 dsh plugin --profile web add dsh-auto-approval
-# client 半（可选：聊天输入栏的 AA 状态 chip）
-dsh plugin --profile web add dsh-client-ui-auto-approval
 ```
 
 源码方式（开发/自建）见 [host 包 README](./packages/dsh-auto-approval)。

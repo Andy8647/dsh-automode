@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-	id: "@deepseek-ai/dsh-client-ui-auto-approval",
+	id: "dsh-client-ui-auto-approval",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
@@ -4545,7 +4545,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		//#region lib/types/client/remote.js
 		/**
 		* Hand-written Typert Remote contribution for the host
-		* `@deepseek-ai/dsh-auto-approval` service.
+		* `dsh-auto-approval` service.
 		*
 		* The upstream build generates this artifact from the Host FaceModel
 		* (`@deepseek-ai/dsh-typert-generator` → `typert.remote-client.js`); this
@@ -4553,7 +4553,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* surface and the generator is a whole-workspace TypeScript analyzer.
 		*
 		* Two halves must stay in lockstep with the host service
-		* (`@deepseek-ai/dsh-auto-approval/src/remote.ts`):
+		* (`dsh-auto-approval/src/remote.ts`):
 		* - the wire schemas (zod, strict) must parse exactly what
 		*   `AutoApprovalStatusService` returns;
 		* - the `TypertRemoteMap`/`TypertRemoteScopeMap` declaration merges type
@@ -4600,10 +4600,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* `ctx.remote.$mount(TYPERT_REMOTE)`.
 		*/
 		const TYPERT_REMOTE = {
-			package: "@deepseek-ai/dsh-auto-approval",
+			package: "dsh-auto-approval",
 			descriptors: [
 				{
-					id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus",
+					id: "dsh-auto-approval#autoApprovalStatus/getStatus",
 					service: "autoApprovalStatus",
 					namespace: "autoApprovalStatus",
 					method: "getStatus",
@@ -4615,12 +4615,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					parameters: [agentParameter],
 					result: {
 						mode: "strict",
-						typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+						typeSymbol: "dsh-auto-approval#AutoApprovalStatus",
 						schema: statusSchema
 					}
 				},
 				{
-					id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getHistory",
+					id: "dsh-auto-approval#autoApprovalStatus/getHistory",
 					service: "autoApprovalStatus",
 					namespace: "autoApprovalStatus",
 					method: "getHistory",
@@ -4632,12 +4632,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					parameters: [agentParameter],
 					result: {
 						mode: "strict",
-						typeSymbol: "@deepseek-ai/dsh-auto-approval#DecisionRecord[]",
+						typeSymbol: "dsh-auto-approval#DecisionRecord[]",
 						schema: array(decisionRecordSchema).readonly()
 					}
 				},
 				{
-					id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/setEnabled",
+					id: "dsh-auto-approval#autoApprovalStatus/setEnabled",
 					service: "autoApprovalStatus",
 					namespace: "autoApprovalStatus",
 					method: "setEnabled",
@@ -4658,7 +4658,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					}],
 					result: {
 						mode: "strict",
-						typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+						typeSymbol: "dsh-auto-approval#AutoApprovalStatus",
 						schema: statusSchema
 					}
 				}

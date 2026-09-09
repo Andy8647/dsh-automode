@@ -19,7 +19,7 @@
  *
  * The wire schema MUST stay in lockstep with:
  * - `AutoApprovalStatusService` methods (this package's `remote.ts`), and
- * - the client companion's `@deepseek-ai/dsh-client-ui-auto-approval/src/client/remote.ts`.
+ * - the client companion's `dsh-client-ui-auto-approval/src/client/remote.ts`.
  */
 import { z } from 'zod';
 /** Wire snapshot of the auto-approval runtime state (mirror of `AutoApprovalStatus`). */
@@ -59,7 +59,7 @@ const agentParameter = {
 /** The three Remote invocations, hand-written to match the generated descriptor shape. */
 const descriptors = [
     {
-        id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus',
+        id: 'dsh-auto-approval#autoApprovalStatus/getStatus',
         service: 'autoApprovalStatus',
         namespace: 'autoApprovalStatus',
         method: 'getStatus',
@@ -68,12 +68,12 @@ const descriptors = [
         parameters: [agentParameter],
         result: {
             mode: 'strict',
-            typeSymbol: '@deepseek-ai/dsh-auto-approval#AutoApprovalStatus',
+            typeSymbol: 'dsh-auto-approval#AutoApprovalStatus',
             schema: statusSchema,
         },
     },
     {
-        id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getHistory',
+        id: 'dsh-auto-approval#autoApprovalStatus/getHistory',
         service: 'autoApprovalStatus',
         namespace: 'autoApprovalStatus',
         method: 'getHistory',
@@ -82,12 +82,12 @@ const descriptors = [
         parameters: [agentParameter],
         result: {
             mode: 'strict',
-            typeSymbol: '@deepseek-ai/dsh-auto-approval#DecisionRecord[]',
+            typeSymbol: 'dsh-auto-approval#DecisionRecord[]',
             schema: z.array(decisionRecordSchema).readonly(),
         },
     },
     {
-        id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/setEnabled',
+        id: 'dsh-auto-approval#autoApprovalStatus/setEnabled',
         service: 'autoApprovalStatus',
         namespace: 'autoApprovalStatus',
         method: 'setEnabled',
@@ -108,7 +108,7 @@ const descriptors = [
         ],
         result: {
             mode: 'strict',
-            typeSymbol: '@deepseek-ai/dsh-auto-approval#AutoApprovalStatus',
+            typeSymbol: 'dsh-auto-approval#AutoApprovalStatus',
             schema: statusSchema,
         },
     },
@@ -120,7 +120,7 @@ const descriptors = [
  * tooling, and this plugin exposes no public schemas or model surface.
  */
 export const remoteManifest = {
-    package: '@deepseek-ai/dsh-auto-approval',
+    package: 'dsh-auto-approval',
     face: 'host',
     schemas: [],
     model: { services: [], events: [], objects: [] },

@@ -1,7 +1,7 @@
 /**
  * L0 规则引擎：预编译正则的匹配原语、tool call 的文本提取，以及单调
  * deny guard（M3）的纯逻辑。全部同步、无状态，便于单测。
- * @module @deepseek-ai/dsh-auto-approval/rules
+ * @module dsh-auto-approval/rules
  */
 /** 返回第一个命中的正则下标，未命中返回 undefined。 */
 export function matchFirst(text, patterns) {

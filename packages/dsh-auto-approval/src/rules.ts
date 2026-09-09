@@ -1,7 +1,7 @@
 /**
  * L0 规则引擎：预编译正则的匹配原语、tool call 的文本提取，以及单调
  * deny guard（M3）的纯逻辑。全部同步、无状态，便于单测。
- * @module @deepseek-ai/dsh-auto-approval/rules
+ * @module dsh-auto-approval/rules
  */
 
 import type { ToolExecution, ToolGuard } from '@deepseek-ai/dsh-tools'

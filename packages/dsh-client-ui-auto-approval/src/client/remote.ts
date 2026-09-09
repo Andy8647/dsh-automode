@@ -1,6 +1,6 @@
 /**
  * Hand-written Typert Remote contribution for the host
- * `@deepseek-ai/dsh-auto-approval` service.
+ * `dsh-auto-approval` service.
  *
  * The upstream build generates this artifact from the Host FaceModel
  * (`@deepseek-ai/dsh-typert-generator` → `typert.remote-client.js`); this
@@ -8,7 +8,7 @@
  * surface and the generator is a whole-workspace TypeScript analyzer.
  *
  * Two halves must stay in lockstep with the host service
- * (`@deepseek-ai/dsh-auto-approval/src/remote.ts`):
+ * (`dsh-auto-approval/src/remote.ts`):
  * - the wire schemas (zod, strict) must parse exactly what
  *   `AutoApprovalStatusService` returns;
  * - the `TypertRemoteMap`/`TypertRemoteScopeMap` declaration merges type
@@ -91,10 +91,10 @@ const agentParameter = {
  * `ctx.remote.$mount(TYPERT_REMOTE)`.
  */
 export const TYPERT_REMOTE: TypertRemoteContribution = {
-  package: '@deepseek-ai/dsh-auto-approval',
+  package: 'dsh-auto-approval',
   descriptors: [
     {
-      id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus',
+      id: 'dsh-auto-approval#autoApprovalStatus/getStatus',
       service: 'autoApprovalStatus',
       namespace: 'autoApprovalStatus',
       method: 'getStatus',
@@ -103,12 +103,12 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       parameters: [agentParameter],
       result: {
         mode: 'strict',
-        typeSymbol: '@deepseek-ai/dsh-auto-approval#AutoApprovalStatus',
+        typeSymbol: 'dsh-auto-approval#AutoApprovalStatus',
         schema: statusSchema,
       },
     },
     {
-      id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getHistory',
+      id: 'dsh-auto-approval#autoApprovalStatus/getHistory',
       service: 'autoApprovalStatus',
       namespace: 'autoApprovalStatus',
       method: 'getHistory',
@@ -117,12 +117,12 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       parameters: [agentParameter],
       result: {
         mode: 'strict',
-        typeSymbol: '@deepseek-ai/dsh-auto-approval#DecisionRecord[]',
+        typeSymbol: 'dsh-auto-approval#DecisionRecord[]',
         schema: z.array(decisionRecordSchema).readonly(),
       },
     },
     {
-      id: '@deepseek-ai/dsh-auto-approval#autoApprovalStatus/setEnabled',
+      id: 'dsh-auto-approval#autoApprovalStatus/setEnabled',
       service: 'autoApprovalStatus',
       namespace: 'autoApprovalStatus',
       method: 'setEnabled',
@@ -143,7 +143,7 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
       ],
       result: {
         mode: 'strict',
-        typeSymbol: '@deepseek-ai/dsh-auto-approval#AutoApprovalStatus',
+        typeSymbol: 'dsh-auto-approval#AutoApprovalStatus',
         schema: statusSchema,
       },
     },

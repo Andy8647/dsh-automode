@@ -2,7 +2,7 @@
  * 配置 schema 与 fail-loud 解析：schemastery 负责默认值，{@link resolveConfig}
  * 负责 schema 表达不了的校验（正则预编译、provider/model 成对、数值边界）。
  * 任何非法配置在插件加载时直接 throw，绝不在运行时静默降级（M1）。
- * @module @deepseek-ai/dsh-auto-approval/config
+ * @module dsh-auto-approval/config
  */
 import z from '@deepseek-ai/schemastery';
 /** 插件配置（全部可选，schemastery schema 提供默认值——上游惯例）。 */

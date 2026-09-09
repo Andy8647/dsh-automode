@@ -1,7 +1,7 @@
 {
   "name": "dsh-auto-approval",
   "description": "Automated tool-call approval for DeepSeek Harness: an `auto` tier for approval policy that classifies each tool call as allow / deny before dispatch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1-rc.4",
+    "dsh-client-ui-auto-approval": "workspace:0.1.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

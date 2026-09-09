@@ -13,7 +13,7 @@
  * gateway 自动解析成 Agent 对象（与 `commands.list(agent)` 同机制）。
  * `setEnabled` 是 async：写入 settings 持久化（失败 fallback 运行时
  * override），gateway 的 strict dispatch 会 await 方法返回值。
- * @module @deepseek-ai/dsh-auto-approval/remote
+ * @module dsh-auto-approval/remote
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';

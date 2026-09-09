@@ -19,13 +19,10 @@ The **chip** next to the composer shows the run state (`AA on` / `AA off`); hove
 
 ## Install
 
-Install both packages into the same profile (published to npm, ships built artifacts — no build environment needed):
+Install both halves into the same profile with one command (published to npm, ships built artifacts — no build environment needed). The host package declares the client companion as a dependency, so the AA status chip arrives with it:
 
 ```sh
-# host half (required: the approval decision logic)
 dsh plugin --profile web add dsh-auto-approval
-# client half (optional: the AA status chip in the composer)
-dsh plugin --profile web add dsh-client-ui-auto-approval
 ```
 
 For source-based installs (development / self-hosting), see the [host package README](./packages/dsh-auto-approval).

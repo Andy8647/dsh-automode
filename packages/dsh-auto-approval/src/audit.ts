@@ -4,7 +4,7 @@
  *
  * 审计是 best-effort：append 失败（如无 session、数据不可序列化）只记
  * warn，绝不影响审批决策本身。
- * @module @deepseek-ai/dsh-auto-approval/audit
+ * @module dsh-auto-approval/audit
  */
 
 import type { Context } from '@deepseek-ai/cordis'

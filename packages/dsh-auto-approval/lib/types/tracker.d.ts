@@ -8,7 +8,7 @@
  *
  * 无 agent 的调用（`exec.agent === undefined`）拿不到 session，fail-closed：
  * 不参与计数。
- * @module @deepseek-ai/dsh-auto-approval/tracker
+ * @module dsh-auto-approval/tracker
  */
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
 /** tracker 依赖的最小 agent 结构（structural typing，测试可直接 mock）。 */

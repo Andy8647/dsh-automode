@@ -11,7 +11,7 @@ import { defineConfig } from 'tsdown'
  * inline styles, so there are no `.module.css` imports to compile.
  */
 
-const ID = '@deepseek-ai/dsh-client-ui-auto-approval'
+const ID = 'dsh-client-ui-auto-approval'
 
 /** The module specifiers the shell shares into the frozen module table. */
 const PLATFORM_MODULES = [

@@ -1,5 +1,5 @@
 /**
- * DSH 权限自动审批插件 — `@deepseek-ai/dsh-auto-approval`
+ * DSH 权限自动审批插件 — `dsh-auto-approval`
  *
  * 在 `tools/pre-execute` 瀑布最前挂一个两态 classifier，给 dsh 的 approval
  * policy 增加第三档 `auto`（现有：`ask` / `never`）：
@@ -16,7 +16,7 @@
  * - 本 turn deny 计数（tracker）从 session log 的 turn/start 惰性推导
  * - L1 一切失败 fail-closed 转 deny，绝不默认放行
  *
- * @module @deepseek-ai/dsh-auto-approval
+ * @module dsh-auto-approval
  */
 
 import { Context } from '@deepseek-ai/cordis'

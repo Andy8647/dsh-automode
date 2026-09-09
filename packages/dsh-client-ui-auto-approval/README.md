@@ -24,10 +24,10 @@ Data flows over a Typert remote (`autoApprovalStatus/getStatus` + `getHistory` +
 
 ## Install
 
-Requires [dsh-auto-approval](../dsh-auto-approval) (the host half):
+Ships as a dependency of [dsh-auto-approval](../dsh-auto-approval) (the host half): installing the host pulls this package in. Installing it alone adds only the chip, which needs the host's `autoApprovalStatus` remote to show real data.
 
 ```sh
-dsh plugin --profile web add dsh-client-ui-auto-approval
+dsh plugin --profile web add dsh-auto-approval
 ```
 
 ## Development

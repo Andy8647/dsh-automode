@@ -10,7 +10,7 @@
  *   一律返回 fail-closed（调用方转 deny），绝不默认放行。
  *
  * 本模块不碰 cordis：`llm` 以最小结构类型注入，测试可直接 stub。
- * @module @deepseek-ai/dsh-auto-approval/classifier
+ * @module dsh-auto-approval/classifier
  */
 import { BlockAssembler, createUserMessage, deepFreeze, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { deadline } from '@deepseek-ai/dsh-timeout';

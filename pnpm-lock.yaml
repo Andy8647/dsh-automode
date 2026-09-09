@@ -13,6 +13,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1-rc.4
         version: 3.18.1-rc.4
+      dsh-client-ui-auto-approval:
+        specifier: workspace:0.1.1
+        version: link:../dsh-client-ui-auto-approval
       zod:
         specifier: ^4.4.3
         version: 4.4.3

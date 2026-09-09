@@ -32,6 +32,8 @@ dsh plugin --profile web add dsh-auto-approval
 # 重启 dsh
 ```
 
+client 伴侣包（`dsh-client-ui-auto-approval`，AA 状态 chip）已声明为依赖，会一起装上。
+
 源码方式（开发/自建）：clone 仓库后 `dsh plugin --profile web add link:/<路径>/packages/dsh-auto-approval`（依赖从 npm 安装，`@deepseek-ai/*` 运行时依赖由 dsh 本体提供）。
 
 ## 配置

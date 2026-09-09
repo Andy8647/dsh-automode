@@ -12,7 +12,7 @@ import { z as z$1 } from "zod";
 * 配置 schema 与 fail-loud 解析：schemastery 负责默认值，{@link resolveConfig}
 * 负责 schema 表达不了的校验（正则预编译、provider/model 成对、数值边界）。
 * 任何非法配置在插件加载时直接 throw，绝不在运行时静默降级（M1）。
-* @module @deepseek-ai/dsh-auto-approval/config
+* @module dsh-auto-approval/config
 */
 /** Runtime configuration schema (schemastery fills defaults before construction). */
 const Config = z.object({
@@ -131,7 +131,7 @@ function resolveConfig(config = {}) {
 *   一律返回 fail-closed（调用方转 deny），绝不默认放行。
 *
 * 本模块不碰 cordis：`llm` 以最小结构类型注入，测试可直接 stub。
-* @module @deepseek-ai/dsh-auto-approval/classifier
+* @module dsh-auto-approval/classifier
 */
 /** prompt 规模上限：用户意图 / 参数 JSON 各自截断，避免审计调用失控放大。 */
 const MAX_INTENT_CHARS = 4e3;
@@ -285,7 +285,7 @@ async function classifyL1(llm, config, input) {
 /**
 * L0 规则引擎：预编译正则的匹配原语、tool call 的文本提取，以及单调
 * deny guard（M3）的纯逻辑。全部同步、无状态，便于单测。
-* @module @deepseek-ai/dsh-auto-approval/rules
+* @module dsh-auto-approval/rules
 */
 /** 返回第一个命中的正则下标，未命中返回 undefined。 */
 function matchFirst(text, patterns) {
@@ -403,7 +403,7 @@ function createDenyGuard(getConfig) {
 *
 * 审计是 best-effort：append 失败（如无 session、数据不可序列化）只记
 * warn，绝不影响审批决策本身。
-* @module @deepseek-ai/dsh-auto-approval/audit
+* @module dsh-auto-approval/audit
 */
 /**
 * 独立决策日志：`$DSH_HOME/logs/auto-approval.log`（默认 `~/.dsh/logs/...`）。
@@ -483,7 +483,7 @@ function audit(ctx, agent, event, sessionEvents) {
 * gateway 自动解析成 Agent 对象（与 `commands.list(agent)` 同机制）。
 * `setEnabled` 是 async：写入 settings 持久化（失败 fallback 运行时
 * override），gateway 的 strict dispatch 会 await 方法返回值。
-* @module @deepseek-ai/dsh-auto-approval/remote
+* @module dsh-auto-approval/remote
 */
 var __runInitializers = function(thisArg, initializers, value) {
 	var useValue = arguments.length > 2;
@@ -625,7 +625,7 @@ let AutoApprovalStatusService = (() => {
 *
 * The wire schema MUST stay in lockstep with:
 * - `AutoApprovalStatusService` methods (this package's `remote.ts`), and
-* - the client companion's `@deepseek-ai/dsh-client-ui-auto-approval/src/client/remote.ts`.
+* - the client companion's `dsh-client-ui-auto-approval/src/client/remote.ts`.
 */
 /** Wire snapshot of the auto-approval runtime state (mirror of `AutoApprovalStatus`). */
 const statusSchema = z$1.object({
@@ -666,7 +666,7 @@ const agentParameter = {
 * tooling, and this plugin exposes no public schemas or model surface.
 */
 const remoteManifest = {
-	package: "@deepseek-ai/dsh-auto-approval",
+	package: "dsh-auto-approval",
 	face: "host",
 	schemas: [],
 	model: {
@@ -676,7 +676,7 @@ const remoteManifest = {
 	},
 	invocations: [
 		{
-			id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getStatus",
+			id: "dsh-auto-approval#autoApprovalStatus/getStatus",
 			service: "autoApprovalStatus",
 			namespace: "autoApprovalStatus",
 			method: "getStatus",
@@ -688,12 +688,12 @@ const remoteManifest = {
 			parameters: [agentParameter],
 			result: {
 				mode: "strict",
-				typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+				typeSymbol: "dsh-auto-approval#AutoApprovalStatus",
 				schema: statusSchema
 			}
 		},
 		{
-			id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/getHistory",
+			id: "dsh-auto-approval#autoApprovalStatus/getHistory",
 			service: "autoApprovalStatus",
 			namespace: "autoApprovalStatus",
 			method: "getHistory",
@@ -705,12 +705,12 @@ const remoteManifest = {
 			parameters: [agentParameter],
 			result: {
 				mode: "strict",
-				typeSymbol: "@deepseek-ai/dsh-auto-approval#DecisionRecord[]",
+				typeSymbol: "dsh-auto-approval#DecisionRecord[]",
 				schema: z$1.array(decisionRecordSchema).readonly()
 			}
 		},
 		{
-			id: "@deepseek-ai/dsh-auto-approval#autoApprovalStatus/setEnabled",
+			id: "dsh-auto-approval#autoApprovalStatus/setEnabled",
 			service: "autoApprovalStatus",
 			namespace: "autoApprovalStatus",
 			method: "setEnabled",
@@ -731,7 +731,7 @@ const remoteManifest = {
 			}],
 			result: {
 				mode: "strict",
-				typeSymbol: "@deepseek-ai/dsh-auto-approval#AutoApprovalStatus",
+				typeSymbol: "dsh-auto-approval#AutoApprovalStatus",
 				schema: statusSchema
 			}
 		}
@@ -749,7 +749,7 @@ const remoteManifest = {
 *
 * 无 agent 的调用（`exec.agent === undefined`）拿不到 session，fail-closed：
 * 不参与计数。
-* @module @deepseek-ai/dsh-auto-approval/tracker
+* @module dsh-auto-approval/tracker
 */
 var DenialTracker = class {
 	states = /* @__PURE__ */ new WeakMap();
@@ -801,7 +801,7 @@ var DenialTracker = class {
 * 与 tracker 的分工：tracker 只算「本 turn deny 计数」（chip 的本 turn 显示），
 * 这里算「插件加载以来的累计决策」。无 agent 的调用不记录（与 tracker
 * fail-closed 一致）。
-* @module @deepseek-ai/dsh-auto-approval/history
+* @module dsh-auto-approval/history
 */
 /**
 * per-agent 决策历史。记录 append-only，超容量丢最旧的（环形语义）；
@@ -863,7 +863,7 @@ var DecisionHistory = class {
 //#endregion
 //#region lib/types/index.js
 /**
-* DSH 权限自动审批插件 — `@deepseek-ai/dsh-auto-approval`
+* DSH 权限自动审批插件 — `dsh-auto-approval`
 *
 * 在 `tools/pre-execute` 瀑布最前挂一个两态 classifier，给 dsh 的 approval
 * policy 增加第三档 `auto`（现有：`ask` / `never`）：
@@ -880,7 +880,7 @@ var DecisionHistory = class {
 * - 本 turn deny 计数（tracker）从 session log 的 turn/start 惰性推导
 * - L1 一切失败 fail-closed 转 deny，绝不默认放行
 *
-* @module @deepseek-ai/dsh-auto-approval
+* @module dsh-auto-approval
 */
 const name = "auto-approval";
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */

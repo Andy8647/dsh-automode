@@ -24,10 +24,10 @@ dsh-auto-approval 的 **client 伴侣包**：在聊天输入栏权限选择器�
 
 ## 安装
 
-依赖 [dsh-auto-approval](../dsh-auto-approval)（host 半）：
+作为 [dsh-auto-approval](../dsh-auto-approval)（host 半）的依赖发布：装 host 包会自动带上本包。单独安装只会多出一个 chip，而 chip 要读 host 的 `autoApprovalStatus` remote 才有真实数据。
 
 ```sh
-dsh plugin --profile web add link:/<你的clone路径>/dsh-auto-approval/packages/dsh-client-ui-auto-approval
+dsh plugin --profile web add dsh-auto-approval
 ```
 
 ## 开发

@@ -33,6 +33,8 @@ dsh plugin --profile web add dsh-auto-approval
 # Restart dsh
 ```
 
+The client companion (`dsh-client-ui-auto-approval`, the AA status chip) is declared as a dependency and installs with it.
+
 Source install (development / self-hosting): clone the repo, then `dsh plugin --profile web add link:/<path>/packages/dsh-auto-approval` (dependencies come from npm; `@deepseek-ai/*` runtime deps are provided by dsh itself).
 
 ## Configuration
