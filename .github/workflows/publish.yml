@@ -1,11 +1,10 @@
 name: publish
 
-# Publish both packages to npm (dsh-auto-approval + dsh-client-ui-auto-approval).
-# Trigger: manual dispatch, or a push of a `v*` tag (release flow).
+# Publish dsh-automode to npm. Trigger: manual dispatch, or a push of a `v*` tag.
 #
-# Requires the repository secret `NPM_TOKEN` — a npm access token with
-# publish rights for the package names below (generate at
-# https://www.npmjs.com/settings/<user>/tokens).
+# Requires the repository secret `NPM_TOKEN` — a granular npm access token with
+# publish rights for this package name, "Bypass 2FA" enabled (CI cannot answer
+# an OTP prompt). Generate at https://www.npmjs.com/settings/<user>/tokens.
 
 on:
   workflow_dispatch:
@@ -35,10 +34,10 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Build both packages
-        run: pnpm -r run build
+      - name: Build
+        run: pnpm run build
 
       - name: Publish to npm
-        run: pnpm -r publish --no-git-checks
+        run: pnpm publish --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
