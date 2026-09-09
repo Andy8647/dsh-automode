@@ -1,5 +1,5 @@
 import type { RemoteResult, TypertRemoteContribution, TypertRemoteNamespace } from '@deepseek-ai/dsh-typert-protocol';
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 /** Wire snapshot of the host auto-approval runtime state (mirror of host `AutoApprovalStatus`). */
 export interface AutoApprovalStatus {
     readonly enabled: boolean;

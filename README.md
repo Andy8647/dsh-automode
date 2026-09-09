@@ -27,10 +27,14 @@ dsh plugin --profile web add dsh-auto-approval
 
 For source-based installs (development / self-hosting), see the [host package README](./packages/dsh-auto-approval).
 
+## Compatibility
+
+Tracks the latest official DeepSeek Harness release. Currently verified against `@deepseek-ai/dsh` **0.1.2-rc.1** (install → boot → real tool-call decision, in a disposable `DSH_HOME`). Older releases are not supported: the harness moves fast and this plugin only follows the current one.
+
 ## Development
 
 ```sh
-pnpm install          # export NPM_TOKEN=$(cat ~/.dsh/npm-token) if any @deepseek-ai/* dep is still private
+pnpm install          # @deepseek-ai/* deps are public on npm; no token needed
 pnpm -r run build     # build both packages
 pnpm -r run test      # host unit tests
 ```

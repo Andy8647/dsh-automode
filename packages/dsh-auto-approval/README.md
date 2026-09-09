@@ -100,7 +100,7 @@ pnpm run test         # vitest
 pnpm run build        # tsc → tsdown
 ```
 
-Dependencies install from npm (rc.5 series; `@deepseek-ai/*` runtime deps are provided by dsh).
+Dependencies install from npm (`@deepseek-ai/*` dev/peer deps pinned to the latest official release, currently the 0.1.2-rc.1 series; runtime deps are provided by dsh itself).
 
 ## License
 

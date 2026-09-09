@@ -12,7 +12,8 @@
  * 本模块不碰 cordis：`llm` 以最小结构类型注入，测试可直接 stub。
  * @module dsh-auto-approval/classifier
  */
-import { BlockAssembler, createUserMessage, deepFreeze, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
+import { BlockAssembler, createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
+import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { deadline } from '@deepseek-ai/dsh-timeout';
 /** prompt 规模上限：用户意图 / 参数 JSON 各自截断，避免审计调用失控放大。 */
 const MAX_INTENT_CHARS = 4000;

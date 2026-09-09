@@ -11,7 +11,12 @@
  * trips the 08-12 `KNOWN_SESSION_EVENT_TYPES` allowlist.
  */
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+// Type-only: pulls the renderer-owned `ctx.slots` service merge.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the ui-session SessionStandardProps merge (branded SessionIdOf).
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the ui-conversation SlotMap merge (the input.left seat + SessionStandardProps).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'

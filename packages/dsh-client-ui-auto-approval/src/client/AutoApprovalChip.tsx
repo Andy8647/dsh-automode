@@ -477,6 +477,7 @@ export function AutoApprovalChip({ getStatus, getHistory, setEnabled }: AutoAppr
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         title="Auto-approval"
+        closeLabel="Close"
         className="aa-modal-wide"
         contentClassName="aa-modal-flush"
       >

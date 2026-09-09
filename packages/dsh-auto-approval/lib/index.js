@@ -1,6 +1,6 @@
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
 import z from "@deepseek-ai/schemastery";
-import { BlockAssembler, ReasoningEffortId, createUserMessage, deepFreeze } from "@deepseek-ai/dsh-llm";
+import { BlockAssembler, ReasoningEffortId, createUserMessage } from "@deepseek-ai/dsh-llm";
+import { deepFreeze } from "@deepseek-ai/dsh-util-values";
 import { deadline } from "@deepseek-ai/dsh-timeout";
 import { appendFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -767,7 +767,7 @@ var DenialTracker = class {
 			};
 			this.states.set(agent, state);
 		}
-		const events = agent.session.events;
+		const events = agent.session.snapshotEvents();
 		for (let seq = state.cursor; seq < events.length; seq++) {
 			const event = events[seq];
 			if (event !== void 0 && event.type === "turn/start" && event.data.turn !== state.turn) {
@@ -884,7 +884,7 @@ var DecisionHistory = class {
 */
 const name = "auto-approval";
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
-const NS = settingsNamespace("auto-approval");
+const NS = "auto-approval";
 /** L1 不可用（无模型服务或无用户意图上下文）时 fail-closed 的 deny 文案。 */
 const L1_UNAVAILABLE_REASON = "auto-approval: automatic classifier is unavailable; the call is denied.";
 /** L1 判定失败（超时/解析失败）时 fail-closed 的 deny 文案。 */
@@ -897,7 +897,7 @@ const L1_FAILED_REASON = "auto-approval: automatic classifier failed; the call i
 */
 function latestUserIntent(agent) {
 	if (agent === void 0) return void 0;
-	const events = agent.session.events;
+	const events = agent.session.snapshotEvents();
 	for (let seq = events.length - 1; seq >= 0; seq--) {
 		const event = events[seq];
 		if (event === void 0 || event.type !== "user/message" || event.data.source.kind !== "user") continue;
@@ -916,7 +916,7 @@ function callFacts(exec) {
 * 插件入口：挂载 `tools/pre-execute` 瀑布（prepend 最先跑）+ L0 deny 的
 * 单调 guard。配置非法直接 throw（fail-loud，M1）。
 *
-* 配置走 `installSettingsSection`（settings 命名空间 `auto-approval`）：
+* 配置走 `ctx.settings.installSection`（settings 命名空间 `auto-approval`）：
 * composition entry 是 base 层，`$DSH_HOME/settings.yaml` 的
 * `auto-approval:` section 和 Web UI 设置页是 user 层，改动**热生效**——
 * `enabled` 就是 Web UI 里的 automode 开关。`validate` 钩子让带非法正则
@@ -937,9 +937,6 @@ function apply(ctx, config = {}) {
 	let runtimeEnabled;
 	/** settings provider 引用（兄弟 entry 服务，用 ctx.inject 等就绪后保存）。 */
 	let settingsProvider;
-	ctx.inject(["settings"], (sctx) => {
-		settingsProvider = sctx.get("settings");
-	});
 	/** 实际生效的 enabled：运行时 override 优先，否则配置值。 */
 	const effectiveEnabled = () => runtimeEnabled ?? resolved.enabled;
 	/** 审计入口：文件日志始终写；session 事件按 `auditSessionEvents` 开关（默认关）
@@ -1000,19 +997,22 @@ function apply(ctx, config = {}) {
 		});
 	};
 	let settingsAttached = false;
-	installSettingsSection(ctx, NS, Config, config, {
-		setSource: (source) => {
-			current = source;
-		},
-		validate: (value) => {
-			resolveConfig(value);
-		},
-		onChange: () => {
-			settingsAttached = true;
-			resolved = resolveConfig(current());
-			tracker = new DenialTracker();
-			arm();
-		}
+	ctx.inject(["settings"], (settingsCtx) => {
+		settingsProvider = settingsCtx.get("settings");
+		settingsCtx.settings.installSection(ctx, NS, Config, config, {
+			setSource: (source) => {
+				current = source;
+			},
+			validate: (value) => {
+				resolveConfig(value);
+			},
+			onChange: () => {
+				settingsAttached = true;
+				resolved = resolveConfig(current());
+				tracker = new DenialTracker();
+				arm();
+			}
+		});
 	});
 	const tools = ctx.get("tools");
 	if (tools !== void 0) tools.guard(createDenyGuard(() => ({

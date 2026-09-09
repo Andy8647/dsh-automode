@@ -18,7 +18,7 @@ function fakeAgent(events: SessionEvent[] = []): FakeAgent {
   const audited: FakeAgent['audited'] = []
   const session = {
     id: 'session-1',
-    events,
+    snapshotEvents: () => events,
     append(type: string, data: unknown) {
       audited.push({ type, data: data as AutoApprovalDecisionEvent })
     },
@@ -131,19 +131,23 @@ describe('escalation 豁免（M5）', () => {
 })
 
 describe('settings 热更新（Web UI 开关）', () => {
-  /** stub settings 服务：register 返回可控 scope，flip 模拟 UI 写入。 */
+  /** stub settings 服务：installSection 捕获 hooks，flip 模拟 UI 写入。 */
   function provideSettings(ctx: Context, initial: Record<string, unknown>): { flip(patch: Record<string, unknown>): void } {
     let value = initial
     const watchers: Array<() => void> = []
     let validate: ((v: unknown) => void) | undefined
     ctx.provide('settings', {
-      register(_ns: string, _schema: unknown, opts?: { validate?: (v: unknown) => void }) {
-        validate = opts?.validate
+      installSection(
+        _owner: unknown,
+        _ns: string,
+        _schema: unknown,
+        _entry: unknown,
+        hooks: { setSource(current: () => unknown): void; onChange(): void; validate?(v: unknown): void },
+      ) {
+        validate = hooks.validate
+        hooks.setSource(() => value)
         validate?.(value)
-        return {
-          get: () => value,
-          watch(cb: () => void) { watchers.push(cb); return () => {} },
-        }
+        watchers.push(() => hooks.onChange())
       },
     })
     return {
@@ -261,11 +265,15 @@ describe('remote 状态 / 历史 / toggle', () => {
     const watchers: Array<() => void> = []
     ctx.provide('settings', {
       writable: true,
-      register(_ns: string, _schema: unknown) {
-        return {
-          get: () => value,
-          watch(cb: () => void) { watchers.push(cb); return () => {} },
-        }
+      installSection(
+        _owner: unknown,
+        _ns: string,
+        _schema: unknown,
+        _entry: unknown,
+        hooks: { setSource(current: () => unknown): void; onChange(): void },
+      ) {
+        hooks.setSource(() => value)
+        watchers.push(() => hooks.onChange())
       },
       update(_ns: unknown, patch: Record<string, unknown>) {
         updates.push(patch)

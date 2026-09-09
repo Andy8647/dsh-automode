@@ -4,7 +4,7 @@ import { DenialTracker } from '../src/tracker.ts'
 import type { AgentLike } from '../src/tracker.ts'
 
 function fakeAgent(events: SessionEvent[] = []): AgentLike & { events: SessionEvent[] } {
-  return { session: { events }, events }
+  return { session: { snapshotEvents: () => events }, events }
 }
 
 function turnStart(turn: number): SessionEvent {

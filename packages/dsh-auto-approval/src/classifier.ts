@@ -13,8 +13,9 @@
  * @module dsh-auto-approval/classifier
  */
 
-import { BlockAssembler, createUserMessage, deepFreeze, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, Message, StreamChunk } from '@deepseek-ai/dsh-llm'
+import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import { deadline } from '@deepseek-ai/dsh-timeout'
 import type { ModelRoute, ResolvedClassifierConfig } from './config.ts'
 

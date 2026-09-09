@@ -16,7 +16,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 /** tracker 依赖的最小 agent 结构（structural typing，测试可直接 mock）。 */
 export interface AgentLike {
   readonly session: {
-    readonly events: readonly SessionEvent[]
+    snapshotEvents(): readonly SessionEvent[]
   }
 }
 
@@ -42,7 +42,7 @@ export class DenialTracker {
       state = { turn: -1, denials: 0, cursor: 0 }
       this.states.set(agent, state)
     }
-    const events = agent.session.events
+    const events = agent.session.snapshotEvents()
     for (let seq = state.cursor; seq < events.length; seq++) {
       const event = events[seq]
       if (event !== undefined && event.type === 'turn/start' && event.data.turn !== state.turn) {

@@ -27,10 +27,14 @@ dsh plugin --profile web add dsh-auto-approval
 
 源码方式（开发/自建）见 [host 包 README](./packages/dsh-auto-approval)。
 
+## 兼容性
+
+只跟官方最新版走。当前在 `@deepseek-ai/dsh` **0.1.2-rc.1** 上实测通过（一次性 `DSH_HOME`：安装 → 启动 → 真实 tool call 判定）。旧版本不保证：harness 迭代很快，本插件只跟当前版本。
+
 ## 开发
 
 ```sh
-pnpm install          # 需 export NPM_TOKEN=$(cat ~/.dsh/npm-token)
+pnpm install          # @deepseek-ai/* 依赖已公开发布在 npm，无需 token
 pnpm -r run build     # 两个包都构建
 pnpm -r run test      # host 单测
 ```

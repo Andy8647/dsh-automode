@@ -14,7 +14,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session';
 /** tracker 依赖的最小 agent 结构（structural typing，测试可直接 mock）。 */
 export interface AgentLike {
     readonly session: {
-        readonly events: readonly SessionEvent[];
+        snapshotEvents(): readonly SessionEvent[];
     };
 }
 export declare class DenialTracker {

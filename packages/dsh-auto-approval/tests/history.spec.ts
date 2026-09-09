@@ -6,7 +6,7 @@ import { DecisionHistory } from '../src/history.ts'
 function fakeAgent(): Agent {
   const session = {
     id: 'session-h',
-    events: [] as SessionEvent[],
+    snapshotEvents: () => [] as SessionEvent[],
     append() {},
   }
   return { session } as unknown as Agent

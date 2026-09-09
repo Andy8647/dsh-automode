@@ -18,7 +18,6 @@
  *
  * @module dsh-auto-approval
  */
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
 import { Config, resolveConfig } from "./config.js";
 import { classifyL1 } from "./classifier.js";
 import { createDenyGuard, DENY_REASON, extractMatchableText, hasEscalationArgs, matchBashPrefix, matchFirst, matchSelfKill, selfKillDenyReason } from "./rules.js";
@@ -29,7 +28,7 @@ import { DenialTracker } from "./tracker.js";
 import { DecisionHistory } from "./history.js";
 export const name = 'auto-approval';
 /** settings 命名空间：settings.yaml 的 section 名，也是 Web UI 设置页的 section。 */
-export const NS = settingsNamespace('auto-approval');
+export const NS = 'auto-approval';
 export { Config } from "./config.js";
 /** L1 不可用（无模型服务或无用户意图上下文）时 fail-closed 的 deny 文案。 */
 const L1_UNAVAILABLE_REASON = 'auto-approval: automatic classifier is unavailable; the call is denied.';
@@ -44,7 +43,7 @@ const L1_FAILED_REASON = 'auto-approval: automatic classifier failed; the call i
 function latestUserIntent(agent) {
     if (agent === undefined)
         return undefined;
-    const events = agent.session.events;
+    const events = agent.session.snapshotEvents();
     for (let seq = events.length - 1; seq >= 0; seq--) {
         const event = events[seq];
         if (event === undefined || event.type !== 'user/message' || event.data.source.kind !== 'user')
@@ -66,7 +65,7 @@ function callFacts(exec) {
  * 插件入口：挂载 `tools/pre-execute` 瀑布（prepend 最先跑）+ L0 deny 的
  * 单调 guard。配置非法直接 throw（fail-loud，M1）。
  *
- * 配置走 `installSettingsSection`（settings 命名空间 `auto-approval`）：
+ * 配置走 `ctx.settings.installSection`（settings 命名空间 `auto-approval`）：
  * composition entry 是 base 层，`$DSH_HOME/settings.yaml` 的
  * `auto-approval:` section 和 Web UI 设置页是 user 层，改动**热生效**——
  * `enabled` 就是 Web UI 里的 automode 开关。`validate` 钩子让带非法正则
@@ -87,9 +86,6 @@ export function apply(ctx, config = {}) {
     let runtimeEnabled;
     /** settings provider 引用（兄弟 entry 服务，用 ctx.inject 等就绪后保存）。 */
     let settingsProvider;
-    ctx.inject(['settings'], (sctx) => {
-        settingsProvider = sctx.get('settings');
-    });
     /** 实际生效的 enabled：运行时 override 优先，否则配置值。 */
     const effectiveEnabled = () => runtimeEnabled ?? resolved.enabled;
     /** 审计入口：文件日志始终写；session 事件按 `auditSessionEvents` 开关（默认关）
@@ -171,18 +167,24 @@ export function apply(ctx, config = {}) {
         });
     };
     let settingsAttached = false;
-    installSettingsSection(ctx, NS, Config, config, {
-        setSource: (source) => { current = source; },
-        // 拒绝无法执行的写（非法正则、不成对路由）：throw 使 update/replace 失败，
-        // 运行中的实例保留上一份好配置。
-        validate: (value) => { resolveConfig(value); },
-        onChange: () => {
-            settingsAttached = true;
-            resolved = resolveConfig(current());
-            // 配置热更新：重建 tracker（denials 计数与 turn 状态重置）。
-            tracker = new DenialTracker();
-            arm();
-        },
+    // settings 注册是服务方法（0.1.2 起）：旧的独立 helper `installSettingsSection`
+    // 已移除。必须在 `ctx.inject(['settings'], ...)` 回调里调用——settings 由兄弟
+    // fiber 提供，且 installSection 要求 owner 是消费者自己的 ctx。
+    ctx.inject(['settings'], (settingsCtx) => {
+        settingsProvider = settingsCtx.get('settings');
+        settingsCtx.settings.installSection(ctx, NS, Config, config, {
+            setSource: (source) => { current = source; },
+            // 拒绝无法执行的写（非法正则、不成对路由）：throw 使 update/replace 失败，
+            // 运行中的实例保留上一份好配置。
+            validate: (value) => { resolveConfig(value); },
+            onChange: () => {
+                settingsAttached = true;
+                resolved = resolveConfig(current());
+                // 配置热更新：重建 tracker（denials 计数与 turn 状态重置）。
+                tracker = new DenialTracker();
+                arm();
+            },
+        });
     });
     // M3：L0 deny 注册为单调 guard——在所有 pre-execute listener 之后执行，
     // 只能 deny 不能 allow，其它 prepend 插件旁路不掉这条硬底线。guard 读

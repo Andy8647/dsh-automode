@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol';
 import type { AutoApprovalStatus, DecisionRecord } from './remote.ts';
 export type { AutoApprovalStatus, DecisionRecord } from './remote.ts';
