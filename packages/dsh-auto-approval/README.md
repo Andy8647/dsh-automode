@@ -72,6 +72,17 @@ auto-approval:
 | `classifierTimeoutMs` | `20000` | per-call L1 timeout, fail-closed ⇒ deny |
 | `classifierGuidance` | unset | custom judgment guidance (advisory, not hard rules) |
 
+## Permissions and data
+
+| Surface | What this plugin does |
+|---|---|
+| Reads | Tool-call arguments under review, and the session log (only to find the latest real user message as classifier intent) |
+| Writes | `$DSH_HOME/logs/auto-approval.log` — a local JSON-lines audit file, best-effort; a write failure only logs a warning and never changes a decision |
+| Network | None by default. Only when you configure the L1 classifier (`classifierFastProvider` / `classifierFastModel`) does it call that LLM provider with the user message + tool call |
+| Executes | Nothing. No subprocess, no shell, no file mutation outside the audit log |
+| Intercepts | `tools/pre-execute` (prepend) plus a monotonic `ctx.tools.guard()` deny guard; writes the `auto-approval` settings namespace when the settings service is writable |
+| Failure bounds | L1 timeout / parse failure / missing model → **deny** (fail-closed). A missing settings service falls back to the composition entry config. An invalid config throws at load (fail-loud) |
+
 ## Audit
 
 Every decision is appended to `$DSH_HOME/logs/auto-approval.log` (JSON lines; first line is the `armed` config summary):

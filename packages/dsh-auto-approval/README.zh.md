@@ -71,6 +71,17 @@ auto-approval:
 | `classifierTimeoutMs` | `20000` | L1 单次超时，fail-closed 转 deny |
 | `classifierGuidance` | 未设置 | 自定义判定准则（guidance，非硬规则） |
 
+## 权限与数据
+
+| 面 | 本插件做什么 |
+|---|---|
+| 读 | 待判定的工具调用参数；session log（仅用于取最近一条真实用户消息作为分类器意图） |
+| 写 | `$DSH_HOME/logs/auto-approval.log`——本机 JSONL 审计文件，best-effort；写失败只记 warn，不影响判定 |
+| 网络 | 默认无。仅当配置了 L1 分类器（`classifierFastProvider` / `classifierFastModel`）时，把用户消息 + 工具调用发给所配置的模型服务 |
+| 执行 | 不执行任何东西。不起子进程、不走 shell、不改审计文件以外的文件 |
+| 拦截 | `tools/pre-execute`（prepend）+ 单调 `ctx.tools.guard()` deny 守卫；settings 服务可写时写 `auto-approval` 命名空间 |
+| 失败边界 | L1 超时 / 解析失败 / 无模型 → **deny**（fail-closed）；settings 服务缺失回退 composition entry 配置；配置非法在加载时 throw（fail-loud） |
+
 ## 审计
 
 每次判定落 `$DSH_HOME/logs/auto-approval.log`（每行 JSON，首行是 `armed` 配置摘要）：
