@@ -8,6 +8,12 @@ The permission model stays 3 + 1: the three official sandbox levels, plus one au
 
 > **Replaces [`dsh-auto-approval`](https://github.com/Andy8647/dsh-auto-approval) (deprecated).** That plugin only hooked `tools/pre-execute`, so DeepSeek Harness's own approval prompts — sandbox escalation in particular — still went to the user. See [Migrating](#migrating-from-dsh-auto-approval).
 
+## Demo
+
+![Automode: a multi-step task runs unattended, then a denied call shows up in the decision table](docs/demo.gif)
+
+The recording: pick **Automode**, send one prompt (create a directory, write a file, read it back, then run `echo danger_test`). The agent runs the file steps unattended — the classifier allows them (`L1-deep` / `whitelist`) — and the final command is blocked by a hard rule (`L0-deny`). The chip's dialog shows both verdicts and the cumulative counts.
+
 ## How it works
 
 ```text

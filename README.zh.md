@@ -8,6 +8,12 @@
 
 > **替代 [`dsh-auto-approval`](https://github.com/Andy8647/dsh-auto-approval)（已弃用）。** 旧插件只挂 `tools/pre-execute`，DSH 自己的审批通道（尤其是沙箱升级）照旧弹给用户。迁移见 [从 dsh-auto-approval 迁移](#从-dsh-auto-approval-迁移)。
 
+## 演示
+
+![Automode：多步任务无人值守跑完，被拒的调用出现在决策表里](docs/demo.gif)
+
+录屏内容：选 **Automode**，发一条 prompt（建目录 → 写文件 → 读回确认 → 执行 `echo danger_test`）。文件那几步全程无人值守通过（`L1-deep` / `whitelist`），最后那条命令被硬规则拦下（`L0-deny`）；chip 弹窗同时显示两条判定和累计计数。
+
 ## 工作原理
 
 ```text
